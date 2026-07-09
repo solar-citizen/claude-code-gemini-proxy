@@ -1,0 +1,18 @@
+# Dependencies
+node_modules/
+
+# Env files
+.env
+.env.local
+.env.*.local
+
+# Logs
+logs/
+*.log
+
+# Claude
+claude.md
+.claude
+
+# Zip files
+*.zip
