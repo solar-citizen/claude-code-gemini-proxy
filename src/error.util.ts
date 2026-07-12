@@ -1,4 +1,4 @@
-export function isErrorWithMessage(err: unknown): err is { message: string } {
+function isErrorWithMessage(err: unknown): err is { message: string } {
   return (
     typeof err === 'object' &&
     err !== null &&
@@ -13,4 +13,8 @@ export function getErrorMessage(err: unknown): string {
   }
 
   return String(err);
+}
+
+export function isErrnoException(err: unknown): err is NodeJS.ErrnoException {
+  return err instanceof Error && 'code' in err;
 }

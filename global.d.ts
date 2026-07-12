@@ -1,10 +1,24 @@
 // ---------- Anthropic Messages API shapes (input side) ----------
 
-type AnthropicRole = "user" | "assistant";
+// Claude Code sends synthetic mid-conversation
+// messages (e.g. the Agent tool's available-agent-types block) with
+// role: "system", separate from the top-level `system` field. Not in the
+// public Anthropic Messages API docs, but real traffic sends it.
+type AnthropicRole = "user" | "assistant" | "system";
 
 type AnthropicTextBlock = {
   type: "text";
   text: string;
+};
+
+type AnthropicThinkingBlock = {
+  type: "thinking";
+  thinking: string;
+};
+
+type AnthropicRedactedThinkingBlock = {
+  type: "redacted_thinking";
+  data: string;
 };
 
 type AnthropicToolUseBlock = {
@@ -24,7 +38,22 @@ type AnthropicToolResultBlock = {
   content?: string | AnthropicToolResultContentItem[];
 };
 
-type AnthropicContentBlock = AnthropicTextBlock | AnthropicToolUseBlock | AnthropicToolResultBlock;
+// Anthropic adds new content block types over time (thinking,
+// redacted_thinking, image, document, server_tool_use, ...). The proxy only
+// ever *acts on* text/tool_use/tool_result, so anything else just needs to
+// survive validation and gets ignored (with a debug log) in conversion —
+// it shouldn't fail the whole request.
+type AnthropicUnknownBlock = {
+  type: string;
+};
+
+type AnthropicContentBlock =
+  | AnthropicTextBlock
+  | AnthropicThinkingBlock
+  | AnthropicRedactedThinkingBlock
+  | AnthropicToolUseBlock
+  | AnthropicToolResultBlock
+  | AnthropicUnknownBlock;
 
 type AnthropicMessage = {
   role: AnthropicRole;
@@ -53,6 +82,7 @@ type AnthropicMessagesRequestBody = {
 // ---------- Gemini shapes (output/input to Gemini) ----------
 
 // Recursive JSON-schema-ish shape, restricted to what sanitizeSchemaForGemini keeps.
+// The `GeminiSchema[]` arm lets sanitizeSchemaForGemini return a mapped array
 type GeminiSchema =
   | {
       type?: string;
@@ -66,6 +96,7 @@ type GeminiSchema =
       minItems?: number;
       maxItems?: number;
     }
+  | GeminiSchema[]
   | Record<string, unknown>;
 
 type GeminiFunctionDeclaration = {
@@ -111,12 +142,22 @@ type GeminiRequestBody = {
 };
 
 // Shape of the parts we actually read back off a Gemini response. The response
-// itself is treated as the wire-boundary `any` (see callGemini); this interface
-// just keeps the code that reads `parts` off it honest instead of implicit-any.
+// itself comes back from callGemini as `unknown` and must be narrowed
+// before any of these fields are read.
 type GeminiResponsePart = {
   text?: string;
   functionCall?: { name: string; args?: Record<string, unknown> };
   thoughtSignature?: string;
+};
+
+type GeminiApiCandidate = {
+  content?: {
+    parts?: GeminiResponsePart[];
+  };
+};
+
+type GeminiApiResponse = {
+  candidates?: GeminiApiCandidate[];
 };
 
 // ---------- Agent types ----------
