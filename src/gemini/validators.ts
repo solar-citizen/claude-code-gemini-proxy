@@ -1,12 +1,6 @@
 import { isRecord } from "../utils/common.util";
 
-// Exported: an Anthropic tool's `input_schema` is itself validated as a
-// Gemini-shaped schema (see anthropic/validators.ts's isAnthropicTool) —
-// that's what it gets translated into, so this genuinely crosses the
-// anthropic/gemini boundary rather than being an accidental coupling.
 export function isGeminiSchema(value: unknown): value is GeminiSchema {
-  // GeminiSchema's own `Record<string, unknown>` fallback member means the
-  // type really does accept "any object or array" — this guard mirrors that.
   return typeof value === "object" && value !== null;
 }
 

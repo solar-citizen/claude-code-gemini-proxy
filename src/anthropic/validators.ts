@@ -1,16 +1,6 @@
 import { isRecord } from "../utils/common.util";
 import { isGeminiSchema } from "../gemini/validators";
 
-// Everything crossing a wire boundary (incoming request body) enters as
-// `unknown` and gets narrowed here instead of trusted via `as`. This also
-// means malformed input fails predictably instead of type-checking cleanly
-// and blowing up somewhere downstream.
-//
-// isAnthropicMessagesRequestBody collects every problem it finds into the
-// `issues` array (path + reason, e.g. `messages[1].role: expected "user" |
-// "assistant", got "system"`) rather than returning a bare boolean — a 400
-// should tell you what was wrong, not just that something was.
-
 function isAnthropicRole(value: unknown): value is AnthropicRole {
   return value === "user" || value === "assistant" || value === "system";
 }
