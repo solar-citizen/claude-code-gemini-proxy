@@ -13,4 +13,4 @@ export const GEMINI_API_KEY = rawApiKey;
 
 export const GEMINI_MODEL = process.env.GEMINI_MODEL ?? "gemini-3.1-flash-lite";
 export const PORT = Number(process.env.PORT ?? 8787);
-export const LOG_DEBUG = process.env.GEMINI_PROXY_DEBUG ?? "0";
+export const LOG_DEBUG = process.env.GEMINI_PROXY_DEBUG === "1";
