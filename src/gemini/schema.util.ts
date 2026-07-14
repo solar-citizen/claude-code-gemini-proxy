@@ -1,4 +1,4 @@
-const GEMINI_SCHEMA_ALLOWED_KEYS = new Set([
+const geminiSchemaAllowedKeys = new Set([
   "type", "format", "description", "nullable", "enum",
   "items", "properties", "required", "minItems", "maxItems",
 ]);
@@ -15,7 +15,7 @@ export function sanitizeSchemaForGemini(schema: unknown): GeminiSchema {
   const out: Record<string, unknown> = {};
 
   for (const [key, value] of Object.entries(schema)) {
-    if (!GEMINI_SCHEMA_ALLOWED_KEYS.has(key)) {
+    if (!geminiSchemaAllowedKeys.has(key)) {
       continue;
     }
 

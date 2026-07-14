@@ -1,9 +1,9 @@
 import { mkdirSync, statSync, renameSync, appendFile } from "fs";
 import { join } from "path";
 import { getErrorMessage, isErrnoException } from "./error.util";
-import { LOG_DEBUG } from "./config";
+import { LOG_DEBUG } from "../config";
 
-const logDir = join(import.meta.dir, "../logs");
+const logDir = join(import.meta.dir, "../../logs");
 mkdirSync(logDir, { recursive: true });
 const logFile = join(logDir, `proxy-${new Date().toISOString().slice(0, 10)}.log`);
 const logMaxBytes = 5_242_880;

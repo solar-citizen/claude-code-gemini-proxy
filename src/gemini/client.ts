@@ -1,8 +1,8 @@
-import { GEMINI_API_KEY, GEMINI_MODEL } from "./config";
+import { GEMINI_API_KEY } from "../config";
 
-export async function callGemini(body: GeminiRequestBody): Promise<unknown> {
+export async function callGemini(body: GeminiRequestBody, model: string): Promise<unknown> {
   const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`,
     { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }
   );
 
