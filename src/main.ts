@@ -1,4 +1,4 @@
-import { GEMINI_MODEL, PORT, LOG_DEBUG } from "./config";
+import { DEFAULT_GEMINI_MODEL, PORT, LOG_DEBUG } from "./config";
 import { anthropicToolsToGemini, anthropicMessagesToGeminiContents, geminiPartsToAnthropicBlocks } from "./converters";
 import { buildSseStream } from "./anthropic/sse";
 import { isAnthropicMessagesRequestBody } from "./anthropic/validators";
@@ -28,7 +28,7 @@ Bun.serve({
 
       const body = rawBody;
       const { messages, system, tools: anthropicTools, max_tokens, temperature, stream, model } = body;
-      const requestedModel = model?.trim() || GEMINI_MODEL;
+      const requestedModel = model?.trim() || DEFAULT_GEMINI_MODEL;
 
       if (pathname === "/v1/models") {
         const responseData = {
