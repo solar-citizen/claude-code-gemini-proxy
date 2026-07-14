@@ -1,12 +1,12 @@
 {
-  "name": "gemini-proxy",
-  "version": "0.1.0",
+  "name": "claude-gemini-proxy",
+  "version": "0.2.0",
   "private": true,
   "description": "Local Anthropic Messages API <-> Gemini generateContent proxy for Claude Code Router",
   "type": "module",
   "packageManager": "bun@1.3.14",
   "scripts": {
-    "start": "bun run gemini-proxy.ts",
+    "start": "bun run src/main.ts",
     "typecheck": "typescript-native/bin/tsc --noEmit",
     "update:bun": "bun run bin/update-bun.js",
     "bump": "bunx npm-check-updates -u --workspaces --root && bun install && bun run update:bun"

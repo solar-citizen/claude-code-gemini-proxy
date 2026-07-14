@@ -11,16 +11,6 @@ type AnthropicTextBlock = {
   text: string;
 };
 
-type AnthropicThinkingBlock = {
-  type: "thinking";
-  thinking: string;
-};
-
-type AnthropicRedactedThinkingBlock = {
-  type: "redacted_thinking";
-  data: string;
-};
-
 type AnthropicToolUseBlock = {
   type: "tool_use";
   id: string;
@@ -38,6 +28,22 @@ type AnthropicToolResultBlock = {
   content?: string | AnthropicToolResultContentItem[];
 };
 
+type AnthropicImageBlock = {
+  type: "image";
+  source: {
+    type: "base64";
+    media_type: string;
+    data: string;
+  };
+};
+
+type AnthropicUsage = {
+  input_tokens: number;
+  output_tokens: number;
+};
+
+type AnthropicDeltaUsage = Pick<AnthropicUsage, "output_tokens">;
+
 // Anthropic adds new content block types over time (thinking,
 // redacted_thinking, image, document, server_tool_use, ...). The proxy only
 // ever *acts on* text/tool_use/tool_result, so anything else just needs to
@@ -49,10 +55,9 @@ type AnthropicUnknownBlock = {
 
 type AnthropicContentBlock =
   | AnthropicTextBlock
-  | AnthropicThinkingBlock
-  | AnthropicRedactedThinkingBlock
   | AnthropicToolUseBlock
   | AnthropicToolResultBlock
+  | AnthropicImageBlock
   | AnthropicUnknownBlock;
 
 type AnthropicMessage = {
@@ -77,6 +82,7 @@ type AnthropicMessagesRequestBody = {
   max_tokens?: number;
   temperature?: number;
   stream?: boolean;
+  model?: string;
 };
 
 // ---------- Gemini shapes (output/input to Gemini) ----------
@@ -122,7 +128,11 @@ type GeminiTextPart = {
   text: string;
 };
 
-type GeminiPart = GeminiTextPart | GeminiFunctionCallPart | GeminiFunctionResponsePart;
+type GeminiPart = 
+  | GeminiTextPart 
+  | GeminiFunctionCallPart 
+  | GeminiFunctionResponsePart 
+  | GeminiInlineDataPart;
 
 type GeminiContent = {
   role: "user" | "model";
@@ -146,7 +156,11 @@ type GeminiRequestBody = {
 // before any of these fields are read.
 type GeminiResponsePart = {
   text?: string;
-  functionCall?: { name: string; args?: Record<string, unknown> };
+  thought?: boolean;
+  functionCall?: { 
+    name: string; 
+    args?: Record<string, unknown>
+  };
   thoughtSignature?: string;
 };
 
@@ -156,8 +170,24 @@ type GeminiApiCandidate = {
   };
 };
 
+type GeminiUsageMetadata = {
+  promptTokenCount?: number;
+  candidatesTokenCount?: number;
+  totalTokenCount?: number;
+  cachedContentTokenCount?: number;
+  thoughtsTokenCount?: number;
+};
+
 type GeminiApiResponse = {
   candidates?: GeminiApiCandidate[];
+  usageMetadata?: GeminiUsageMetadata;
+};
+
+type GeminiInlineDataPart = {
+  inlineData: {
+    mimeType: string;
+    data: string;
+  };
 };
 
 // ---------- Agent types ----------
@@ -175,3 +205,9 @@ type AgentType =
 type AnthropicOutputBlock =
   | { type: "text"; text: string }
   | { type: "tool_use"; id: string; name: string; input: Record<string, unknown> };
+
+// ---------- Proxy-specific ----------
+
+type ProxyUsageMetrics = AnthropicUsage & {
+  cached_tokens: number;
+};

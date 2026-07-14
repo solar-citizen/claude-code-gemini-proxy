@@ -1,12 +1,5 @@
-import { sanitizeSchemaForGemini } from "./schema.util";
-import { debugLog } from "./logger";
-
-/**
- * `AnthropicUnknownBlock.type` is a plain `string`, wider than the literal
- * types on the other block kinds, so `block.type === "text"` alone can't
- * prove `block` isn't the unknown-block variant. Explicit predicates side-step
- * that — TS trusts a declared `x is T` regardless of the structural overlap.
- */
+import { sanitizeSchemaForGemini } from "./gemini/schema.util";
+import { debugLog } from "./utils/logger.util";
 
 function isTextBlock(block: AnthropicContentBlock): block is AnthropicTextBlock {
   return block.type === "text";
@@ -18,6 +11,10 @@ function isToolUseBlock(block: AnthropicContentBlock): block is AnthropicToolUse
 
 function isToolResultBlock(block: AnthropicContentBlock): block is AnthropicToolResultBlock {
   return block.type === "tool_result";
+}
+
+function isImageBlock(block: AnthropicContentBlock): block is AnthropicImageBlock {
+  return block.type === "image" && "source" in block && block.source.type === "base64";
 }
 
 /**
@@ -76,11 +73,17 @@ export function anthropicMessagesToGeminiContents(messages: AnthropicMessage[]):
             response: { content: contentText },
           },
         });
+      } else if (isImageBlock(block)) {
+        parts.push({
+          inlineData: {
+            mimeType: block.source.media_type,
+            data: block.source.data
+          }
+        });
       } else {
         // Blocks we deliberately don't act on (thinking, redacted_thinking,
-        // image, document, ...) — dropped, not converted, since Gemini has
-        // no equivalent. Logged under debug so a dropped block is visible
-        // instead of silently vanishing from the conversation.
+        // document, ...) — dropped, not converted, since Gemini has
+        // no equivalent. Logged under debug.
         debugLog("dropping unsupported content block", { type: block.type });
       }
     }
@@ -94,7 +97,13 @@ export function geminiPartsToAnthropicBlocks(parts: GeminiResponsePart[]): Anthr
   const blocks: AnthropicOutputBlock[] = [];
 
   for (const part of parts) {
-    const { text, functionCall } = part;
+    const { text, functionCall, thought } = part;
+
+    if (thought) {
+      debugLog("dropping thought part", { text });
+      continue;
+    }
+
     if (text) {
       blocks.push({ type: "text", text });
     } else if (functionCall) {
