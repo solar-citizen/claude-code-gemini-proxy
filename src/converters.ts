@@ -83,8 +83,7 @@ export function anthropicMessagesToGeminiContents(messages: AnthropicMessage[]):
       } else {
         // Blocks we deliberately don't act on (thinking, redacted_thinking,
         // document, ...) — dropped, not converted, since Gemini has
-        // no equivalent. Logged under debug so a dropped block is visible
-        // instead of silently vanishing from the conversation.
+        // no equivalent. Logged under debug.
         debugLog("dropping unsupported content block", { type: block.type });
       }
     }
