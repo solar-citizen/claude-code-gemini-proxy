@@ -1,15 +1,11 @@
-/**
- * gemini-proxy.ts — minimal Anthropic Messages API <-> Gemini generateContent proxy
- * preserves Gemini 3.x thoughtSignature across tool-call round trips
- */
-
-import { GEMINI_MODEL, PORT, LOG_DEBUG } from "./src/config";
-import { log, debugLog, getLogFilePath } from "./src/logger";
-import { anthropicToolsToGemini, anthropicMessagesToGeminiContents, geminiPartsToAnthropicBlocks } from "./src/converters";
-import { callGemini } from "./src/gemini-client";
-import { buildSseStream } from "./src/sse";
-import { isAnthropicMessagesRequestBody, isGeminiApiResponse } from "./src/validators";
-import { getErrorMessage } from "./src/error.util";
+import { GEMINI_MODEL, PORT, LOG_DEBUG } from "./config";
+import { anthropicToolsToGemini, anthropicMessagesToGeminiContents, geminiPartsToAnthropicBlocks } from "./converters";
+import { buildSseStream } from "./anthropic/sse";
+import { isAnthropicMessagesRequestBody } from "./anthropic/validators";
+import { isGeminiApiResponse } from "./gemini/validators";
+import { callGemini } from "./gemini/client";
+import { getErrorMessage } from "./utils/error.util";
+import { log, debugLog, getLogFilePath } from "./utils/logger.util";
 
 Bun.serve({
   port: PORT,
@@ -19,17 +15,32 @@ Bun.serve({
     const { pathname } = new URL(req.url);
 
     try {
+      const rawBody: unknown = await req.json();
+      debugLog("request body", rawBody);
+
+      if (!isAnthropicMessagesRequestBody(rawBody)) {
+        log("error", "invalid request body", { ms: Date.now() - start });
+        return new Response(
+          JSON.stringify({ type: "error", error: { message: "Invalid request body" } }),
+          { status: 400, headers: { "content-type": "application/json" } },
+        );
+      }
+
+      const body = rawBody;
+      const { messages, system, tools: anthropicTools, max_tokens, temperature, stream, model } = body;
+      const requestedModel = model?.trim() || GEMINI_MODEL;
+
       if (pathname === "/v1/models") {
         const responseData = {
           data: [{
             type: "model",
-            id: GEMINI_MODEL,
-            display_name: GEMINI_MODEL,
+            id: requestedModel,
+            display_name: requestedModel,
             created_at: "2026-01-01T00:00:00Z",
           }],
           has_more: false,
-          first_id: GEMINI_MODEL,
-          last_id: GEMINI_MODEL,
+          first_id: requestedModel,
+          last_id: requestedModel,
         };
         
         return new Response(JSON.stringify(responseData), {
@@ -45,62 +56,63 @@ Bun.serve({
         return new Response("not found", { status: 404 });
       }
 
-      const rawBody: unknown = await req.json();
-      debugLog("request body", rawBody);
-
-      if (!isAnthropicMessagesRequestBody(rawBody)) {
-        log("error", "invalid request body", { ms: Date.now() - start });
-        return new Response(
-          JSON.stringify({ type: "error", error: { message: "Invalid request body" } }),
-          { status: 400, headers: { "content-type": "application/json" } },
-        );
-      }
-
-      const body = rawBody;
-
       const generationConfig: GeminiGenerationConfig = {
-        maxOutputTokens: body.max_tokens ?? 4096,
+        maxOutputTokens: max_tokens ?? 4096,
       };
 
-      if (body.temperature != null) {
-        generationConfig.temperature = body.temperature;
+      if (temperature != null) {
+        generationConfig.temperature = temperature;
       }
       
-      const tools = anthropicToolsToGemini(body.tools);
+      const tools = anthropicToolsToGemini(anthropicTools);
 
       const geminiBody: GeminiRequestBody = {
-        contents: anthropicMessagesToGeminiContents(body.messages ?? []),
+        contents: anthropicMessagesToGeminiContents(messages ?? []),
         generationConfig,
-        ...(body.system ? {
+        ...(system ? {
           systemInstruction: {
-            parts: [{ text: Array.isArray(body.system) ? body.system.map((b) => b.text ?? "").join("\n") : body.system }],
+            parts: [{ text: Array.isArray(system) ? system.map(({ text }) => text ?? "").join("\n") : system }],
           },
         } : {}),
         ...(tools ? { tools } : {}),
       };
 
-      const geminiRes: unknown = await callGemini(geminiBody);
+      const geminiRes: unknown = await callGemini(geminiBody, requestedModel);
       debugLog("gemini response", geminiRes);
 
       if (!isGeminiApiResponse(geminiRes)) {
         throw new Error("Unexpected Gemini response shape");
       }
 
-      const parts: GeminiResponsePart[] = geminiRes.candidates?.[0]?.content?.parts ?? [];
+      const { candidates, usageMetadata } = geminiRes;
+      const { 
+        promptTokenCount,
+        candidatesTokenCount,
+        cachedContentTokenCount
+      } = usageMetadata ?? {};
+
+      const parts: GeminiResponsePart[] = candidates?.[0]?.content?.parts ?? [];
       const blocks = geminiPartsToAnthropicBlocks(parts);
-      const stopReason = blocks.some((b) => {
-        return b.type === "tool_use";
+      const stopReason = blocks.some(({ type }) => {
+        return type === "tool_use";
       }) ? "tool_use" : "end_turn";
+      const usage: ProxyUsageMetrics = {
+        input_tokens: promptTokenCount ?? 0,
+        output_tokens: candidatesTokenCount ?? 0,
+        cached_tokens: cachedContentTokenCount ?? 0,
+      };
 
       log("info", `${method} ${pathname} -> ${stopReason}`, {
         ms: Date.now() - start,
+        model: requestedModel,
+        usage,
         toolCalls: blocks.filter((block): block is Extract<AnthropicOutputBlock, { type: "tool_use" }> => {
           return block.type === "tool_use";
         }).map(({ name }) => name),
       });
 
-      if (body.stream) {
-        return new Response(buildSseStream(blocks, stopReason), {
+      if (stream) {
+        return new Response(buildSseStream(blocks, stopReason, requestedModel, usage), {
           headers: { "content-type": "text/event-stream; charset=utf-8", "cache-control": "no-cache", connection: "keep-alive" },
         });
       }
@@ -110,10 +122,13 @@ Bun.serve({
         type: "message",
         role: "assistant",
         content: blocks,
-        model: GEMINI_MODEL,
+        model: requestedModel,
         stop_reason: stopReason,
         stop_sequence: null,
-        usage: { input_tokens: 0, output_tokens: 0 },
+        usage: {
+          input_tokens: usage.input_tokens,
+          output_tokens: usage.output_tokens
+        } satisfies AnthropicUsage,
       };
 
       return new Response(JSON.stringify(responseBody), {

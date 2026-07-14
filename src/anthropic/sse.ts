@@ -1,10 +1,13 @@
-import { GEMINI_MODEL } from "./config";
-
-export function sseEvent(event: string, data: unknown): string {
+function sseEvent(event: string, data: unknown): string {
   return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
 }
 
-export function buildSseStream(blocks: AnthropicOutputBlock[], stopReason: string): ReadableStream<Uint8Array> {
+export function buildSseStream(
+  blocks: AnthropicOutputBlock[],
+  stopReason: string,
+  model: string,
+  usage: AnthropicUsage,
+): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder();
 
   return new ReadableStream({
@@ -18,10 +21,10 @@ export function buildSseStream(blocks: AnthropicOutputBlock[], stopReason: strin
           type: "message",
           role: "assistant",
           content: [],
-          model: GEMINI_MODEL,
+          model,
           stop_reason: null,
           stop_sequence: null,
-          usage: { input_tokens: 0, output_tokens: 0 },
+          usage: { input_tokens: usage.input_tokens, output_tokens: 0 } satisfies AnthropicUsage,
         },
       }));
 
@@ -72,10 +75,12 @@ export function buildSseStream(blocks: AnthropicOutputBlock[], stopReason: strin
           stop_reason: stopReason,
           stop_sequence: null,
         },
-        usage: { output_tokens: 0 },
+        usage: { output_tokens: usage.output_tokens } satisfies AnthropicDeltaUsage,
       }));
 
-      push(sseEvent("message_stop", { type: "message_stop" }));
+      push(sseEvent("message_stop", {
+        type: "message_stop" 
+      }));
 
       controller.close();
     },
