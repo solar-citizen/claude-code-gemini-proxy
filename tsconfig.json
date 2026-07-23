@@ -4,7 +4,7 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "lib": ["ESNext"],
-    "types": ["bun-types"],
+    "types": ["bun-types", "jest"],
     "strict": true,
     "noImplicitAny": true,
     "noUnusedLocals": true,
@@ -15,5 +15,5 @@
     "allowImportingTsExtensions": true,
     "noEmit": true
   },
-  "include": ["*.ts", "*.d.ts", "src/**/*.ts"]
+  "include": ["*.ts", "*.d.ts", "src/**/*.ts", "tests/**/*.ts"]
 }
