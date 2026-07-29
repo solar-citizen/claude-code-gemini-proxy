@@ -10,9 +10,13 @@ node_modules/
 logs/
 *.log
 
-# Claude
+# AI
 claude.md
 .claude
+.agents
 
 # Zip files
 *.zip
+
+# Tests
+coverage
