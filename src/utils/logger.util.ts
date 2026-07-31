@@ -1,7 +1,7 @@
 import { mkdirSync, statSync, renameSync, appendFile } from "fs";
 import { join } from "path";
 import { getErrorMessage, isErrnoException } from "./error.util";
-import { LOG_DEBUG } from "../config";
+import { LOG_LEVEL } from "../config";
 
 const logDir = join(import.meta.dir, "../../logs");
 mkdirSync(logDir, { recursive: true });
@@ -56,13 +56,17 @@ function flushLogs() {
 }
 
 export function log(level: "info" | "error", msg: string, data?: unknown) {
+  if (LOG_LEVEL === 1) {
+    return;
+  }
+
   const entry: Record<string, unknown> = {
     time: new Date().toISOString(),
     level,
     msg,
   };
 
-  if (data !== undefined) {
+  if (LOG_LEVEL === 3 && data !== undefined) {
     entry.data = data;
   }
 
@@ -76,7 +80,7 @@ export function log(level: "info" | "error", msg: string, data?: unknown) {
 }
 
 export function debugLog(msg: string, data?: unknown) {
-  if (LOG_DEBUG) {
+  if (LOG_LEVEL === 3) {
     log("info", msg, data);
   }
 }

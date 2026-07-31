@@ -1,4 +1,4 @@
-import { DEFAULT_GEMINI_MODEL, PORT, LOG_DEBUG } from "./config";
+import { DEFAULT_GEMINI_MODEL, PORT, LOG_LEVEL } from "./config";
 import { anthropicToolsToGemini, anthropicMessagesToGeminiContents, geminiPartsToAnthropicBlocks } from "./converters";
 import { buildSseStream } from "./anthropic/sse";
 import { isAnthropicMessagesRequestBody } from "./anthropic/validators";
@@ -155,4 +155,6 @@ Bun.serve({
 });
 
 console.log(`Gemini<->Anthropic proxy listening on http://127.0.0.1:${PORT}`);
-console.log(`Logs: ${getLogFilePath()}${LOG_DEBUG ? " (debug mode: full bodies logged)" : ""}`);
+if (LOG_LEVEL > 1) {
+  console.log(`Logs: ${getLogFilePath()}${LOG_LEVEL === 3 ? " (long logs: full bodies logged)" : " (short logs)"}`);
+}
