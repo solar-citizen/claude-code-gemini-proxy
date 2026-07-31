@@ -56,7 +56,9 @@ function flushLogs() {
 }
 
 export function log(level: "info" | "error", msg: string, data?: unknown) {
-  if (LOG_LEVEL === 1) return;
+  if (LOG_LEVEL === 1) {
+    return;
+  }
 
   const entry: Record<string, unknown> = {
     time: new Date().toISOString(),
