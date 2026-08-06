@@ -11,11 +11,21 @@ gemini() {
   unset ANTHROPIC_AUTH_TOKEN
   export CLAUDE_CONFIG_DIR=~/.claude-gemini
   export ANTHROPIC_BASE_URL=http://127.0.0.1:8787
-  export ANTHROPIC_MODEL="gemma-4-31b-it"
-  export ANTHROPIC_DEFAULT_OPUS_MODEL="gemma-4-31b-it"
-  export ANTHROPIC_DEFAULT_SONNET_MODEL="gemma-4-31b-it"
-  export ANTHROPIC_DEFAULT_HAIKU_MODEL="gemini-3.1-flash-lite"
-  export CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY=1
+
+  # Primary coding model (Sonnet tier)
+  export ANTHROPIC_MODEL="gemini-3.5-flash-lite[1m]"
+  export ANTHROPIC_DEFAULT_SONNET_MODEL="gemini-3.5-flash-lite[1m]"
+
+  # Heavy reasoning / planning (Opus tier)
+  export ANTHROPIC_DEFAULT_OPUS_MODEL="gemini-3.5-flash-lite[1m]"
+
+  # Fast background / sub-agents (Haiku tier)
+  export ANTHROPIC_DEFAULT_HAIKU_MODEL="gemini-3.1-flash-lite[1m]"
+
+  # (optional) export CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY=1
+  # ^ only useful if the proxy ever exposes models under claude*/anthropic* IDs —
+  #   currently filtered out of the picker since our model names are gemini-*
+
   claude "$@"
 }
 ```
@@ -54,8 +64,10 @@ Any model exposed via `generativelanguage.googleapis.com`'s `generateContent` en
 | Model | Notes |
 |---|---|
 | `gemma-4-31b-it` | Open-weight, dense, 31B params, 256K context, strong coding/agentic benchmarks |
-| `gemini-3.1-flash-lite` | Proprietary, fast/cheap, 1M context |
-| `gemini-3.5-flash` | Proprietary, stronger reasoning/coding than flash-lite, 1M context |
+| `gemini-3.1-flash-lite` | Proprietary, fast/cheap, 1M context, Jan 2025 knowledge cutoff |
+| `gemini-3.5-flash-lite` | Proprietary, high-volume/low-latency tier, 1M context, sizeable jump over 3.1 Flash-Lite on coding and agentic benchmarks |
+| `gemini-3.6-flash` | Proprietary, current default workhorse model, 1M context, stronger coding/agentic/computer-use than 3.5 Flash, ~17% fewer output tokens, Mar 2026 knowledge cutoff |
+| `gemini-3.5-flash` | Proprietary, predecessor to 3.6 Flash, 1M context, still available but superseded as the default workhorse |
 
 Swap any tier's env var to any of these to change what handles that tier's requests.
 
@@ -78,10 +90,19 @@ Expect `"text": "GEMMA_OK"` and `"model": "gemma-4-31b-it"` in the response, wit
 ```bash
 curl -s http://127.0.0.1:8787/v1/messages \
   -H "content-type: application/json" \
-  -d '{"model":"gemini-3.1-flash-lite","max_tokens":30,"messages":[{"role":"user","content":"Reply with exactly: FLASH_OK"}]}' | jq
+  -d '{"model":"gemini-3.5-flash-lite","max_tokens":30,"messages":[{"role":"user","content":"Reply with exactly: FLASH_LITE_OK"}]}' | jq
 ```
 
-Expect `"text": "FLASH_OK"` and `"model": "gemini-3.1-flash-lite"` in the response, with real (non-zero) `usage` numbers.
+Expect `"text": "FLASH_LITE_OK"` and `"model": "gemini-3.5-flash-lite"` in the response, with real (non-zero) `usage` numbers.
+
+### Flash
+```bash
+curl -s http://127.0.0.1:8787/v1/messages \
+  -H "content-type: application/json" \
+  -d '{"model":"gemini-3.6-flash","max_tokens":30,"messages":[{"role":"user","content":"Reply with exactly: FLASH_OK"}]}' | jq
+```
+
+Expect `"text": "FLASH_OK"` and `"model": "gemini-3.6-flash"` in the response, with real (non-zero) `usage` numbers.
 
 Don't rely on `/v1/models` to verify routing — it doesn't call Gemini at all, it just echoes back whatever model string it's given. The `/v1/messages` test above is the only one that proves an actual request reached the model.
 
