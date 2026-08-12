@@ -3,9 +3,12 @@ import { anthropicToolsToGemini, anthropicMessagesToGeminiContents, geminiPartsT
 import { buildSseStream } from "./anthropic/sse";
 import { isAnthropicMessagesRequestBody } from "./anthropic/validators";
 import { isGeminiApiResponse } from "./gemini/validators";
-import { callGemini } from "./gemini/client";
+import { callGeminiRaw } from "./gemini/client";
 import { getErrorMessage } from "./utils/error.util";
 import { log, debugLog, getLogFilePath } from "./utils/logger.util";
+import { rotationManager } from "./gemini/rotation-instance";
+import { detectTier } from "./gemini/tier";
+import { AllCombinationsExhaustedError, GeminiUpstreamError } from "./gemini/rotation";
 
 Bun.serve({
   port: PORT,
@@ -42,7 +45,7 @@ Bun.serve({
           first_id: requestedModel,
           last_id: requestedModel,
         };
-        
+
         return new Response(JSON.stringify(responseData), {
           headers: { "content-type": "application/json" },
         });
@@ -63,7 +66,7 @@ Bun.serve({
       if (temperature != null) {
         generationConfig.temperature = temperature;
       }
-      
+
       const tools = anthropicToolsToGemini(anthropicTools);
 
       const geminiBody: GeminiRequestBody = {
@@ -77,7 +80,14 @@ Bun.serve({
         ...(tools ? { tools } : {}),
       };
 
-      const geminiRes: unknown = await callGemini(geminiBody, requestedModel);
+      const tier = detectTier(requestedModel);
+
+      const { response: geminiResponse, model: actualModel } = await rotationManager.executeWithRotation(
+        tier,
+        (apiKey, geminiModel) => callGeminiRaw(geminiBody, geminiModel, apiKey),
+      );
+
+      const geminiRes: unknown = await geminiResponse.json();
       debugLog("gemini response", geminiRes);
 
       if (!isGeminiApiResponse(geminiRes)) {
@@ -85,7 +95,7 @@ Bun.serve({
       }
 
       const { candidates, usageMetadata } = geminiRes;
-      const { 
+      const {
         promptTokenCount,
         candidatesTokenCount,
         cachedContentTokenCount
@@ -102,9 +112,12 @@ Bun.serve({
         cached_tokens: cachedContentTokenCount ?? 0,
       };
 
+      const responseModel = actualModel;
+
       log("info", `${method} ${pathname} -> ${stopReason}`, {
         ms: Date.now() - start,
-        model: requestedModel,
+        tier,
+        model: responseModel,
         usage,
         toolCalls: blocks.filter((block): block is Extract<AnthropicOutputBlock, { type: "tool_use" }> => {
           return block.type === "tool_use";
@@ -112,7 +125,7 @@ Bun.serve({
       });
 
       if (stream) {
-        return new Response(buildSseStream(blocks, stopReason, requestedModel, usage), {
+        return new Response(buildSseStream(blocks, stopReason, responseModel, usage), {
           headers: { "content-type": "text/event-stream; charset=utf-8", "cache-control": "no-cache", connection: "keep-alive" },
         });
       }
@@ -122,7 +135,7 @@ Bun.serve({
         type: "message",
         role: "assistant",
         content: blocks,
-        model: requestedModel,
+        model: responseModel,
         stop_reason: stopReason,
         stop_sequence: null,
         usage: {
@@ -136,6 +149,36 @@ Bun.serve({
       });
 
     } catch (err: unknown) {
+      if (err instanceof AllCombinationsExhaustedError) {
+        log("error", "all combinations exhausted", { message: err.message, ms: Date.now() - start });
+        return new Response(
+          JSON.stringify({
+            type: "error",
+            error: {
+              type: "overloaded_error",
+              message: err.message,
+            },
+          }),
+          {
+            status: 529,
+            headers: { "content-type": "application/json" },
+          },
+        );
+      }
+
+      if (err instanceof GeminiUpstreamError) {
+        const message = getErrorMessage(err);
+        log("error", "gemini upstream error (non-retryable)", { status: err.status, ms: Date.now() - start });
+
+        return new Response(
+          JSON.stringify({ type: "error", error: { message } }),
+          {
+            status: err.status >= 400 && err.status < 600 ? err.status : 502,
+            headers: { "content-type": "application/json" },
+          },
+        );
+      }
+
       const message = getErrorMessage(err);
       const stack = err instanceof Error ? err.stack : undefined;
 

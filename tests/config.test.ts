@@ -12,12 +12,12 @@ describe("Config", () => {
   });
 
   it("parses environment variables correctly with defaults", async () => {
+    delete process.env.GEMINI_API_KEYS;
     process.env.GEMINI_API_KEY = "test-gemini-key-1";
     delete process.env.DEFAULT_GEMINI_MODEL;
     delete process.env.PORT;
     delete process.env.LOG_LEVEL;
 
-    // Use dynamic import with unique query param to bypass cache
     const config = await import(`../src/config?t=${Date.now()}_1`);
 
     expect(config.GEMINI_API_KEY).toBe("test-gemini-key-1");
@@ -27,6 +27,7 @@ describe("Config", () => {
   });
 
   it("parses custom environment variables correctly", async () => {
+    delete process.env.GEMINI_API_KEYS;
     process.env.GEMINI_API_KEY = "custom-key-2";
     process.env.DEFAULT_GEMINI_MODEL = "gemini-pro";
     process.env.PORT = "3000";

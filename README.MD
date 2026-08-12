@@ -1,4 +1,4 @@
-# claude-gemini-proxy
+# claude-code-gemini-proxy
 
 A minimal Anthropic Messages API ↔ Gemini `generateContent` proxy. It lets you run Claude Code against Gemini/Gemma models instead of the Anthropic API, with different models assigned to Claude Code's different quality tiers (opus / sonnet / haiku).
 
@@ -12,15 +12,17 @@ gemini() {
   export CLAUDE_CONFIG_DIR=~/.claude-gemini
   export ANTHROPIC_BASE_URL=http://127.0.0.1:8787
 
-  # Primary coding model (Sonnet tier)
+  # Default fallback model
   export ANTHROPIC_MODEL="gemini-3.5-flash-lite[1m]"
-  export ANTHROPIC_DEFAULT_SONNET_MODEL="gemini-3.5-flash-lite[1m]"
+
+  # Primary coding model (Sonnet tier)
+  export ANTHROPIC_DEFAULT_SONNET_MODEL="gemini-3.5-flash[1m]"
 
   # Heavy reasoning / planning (Opus tier)
-  export ANTHROPIC_DEFAULT_OPUS_MODEL="gemini-3.5-flash-lite[1m]"
+  export ANTHROPIC_DEFAULT_OPUS_MODEL="gemini-3.6-flash[1m]"
 
   # Fast background / sub-agents (Haiku tier)
-  export ANTHROPIC_DEFAULT_HAIKU_MODEL="gemini-3.1-flash-lite[1m]"
+  export ANTHROPIC_DEFAULT_HAIKU_MODEL="gemini-3.5-flash-lite[1m]"
 
   # (optional) export CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY=1
   # ^ only useful if the proxy ever exposes models under claude*/anthropic* IDs —
@@ -70,6 +72,39 @@ Any model exposed via `generativelanguage.googleapis.com`'s `generateContent` en
 | `gemini-3.5-flash` | Proprietary, predecessor to 3.6 Flash, 1M context, still available but superseded as the default workhorse |
 
 Swap any tier's env var to any of these to change what handles that tier's requests.
+
+## Multiple Keys & Model Rotation
+
+You can configure the proxy to rotate across multiple API keys and fallback models automatically. Configure this in your `.env` file (copied from `.env.example`):
+
+```env
+# Supply multiple keys separated by commas
+GEMINI_API_KEYS="key1,key2,key3"
+
+# Define ordered fallback models for each tier.
+# Include Claude's [1m] suffix so it uses the 1M context window.
+HAIKU_MODELS="gemini-3.5-flash-lite[1m],gemini-3.1-flash-lite[1m]"
+SONNET_MODELS="gemini-3.5-flash[1m],gemini-3-flash[1m]"
+OPUS_MODELS="gemini-3.6-flash[1m]"
+
+# Optional: Cooldown in seconds for a failed key/model combination (default: 60)
+ROTATION_COOLDOWN_SECONDS=60
+```
+
+### How Rotation Works
+
+The proxy generates a deterministic rotation sequence based on your keys and the incoming tier. For example, if you have 2 keys and 2 Haiku models (`A, B`), the sequence is:
+
+1. `KEY1 + A`
+2. `KEY1 + B`
+3. `KEY2 + A`
+4. `KEY2 + B`
+
+**Important Guarantees:**
+- **Sequential Failover:** Requests are retried sequentially. There is no background request spam.
+- **Cooldowns:** Rate-limited (e.g. 429) or temporarily failing combinations enter a cooldown period. Healthy combinations are preferred over those in cooldown.
+- **Temporary State:** Cooldown state is temporary and clears automatically when expired or upon success.
+- **Strict Tier Boundaries:** Tiers *never* cross-fallback into one another. A failed Haiku request will never fall back to a Sonnet model. Only the models defined for that specific tier are used.
 
 ## Verifying it's working
 
