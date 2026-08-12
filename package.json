@@ -1,6 +1,6 @@
 {
-  "name": "claude-gemini-proxy",
-  "version": "0.2.3",
+  "name": "claude-code-gemini-proxy",
+  "version": "0.3.0",
   "private": true,
   "description": "Local Anthropic Messages API <-> Gemini generateContent proxy for Claude Code Router",
   "type": "module",
