@@ -4,19 +4,19 @@ import { log } from "../utils/logger.util";
 export type Tier = "opus" | "sonnet" | "haiku";
 export type RotationMode = "default" | "rotation";
 
-export interface Combination {
+export type Combination = {
   readonly key: string;
   readonly model: string;
   readonly keyFingerprint: string;
 }
 
-export interface TierModels {
+export type TierModels = {
   opus: readonly string[];
   sonnet: readonly string[];
   haiku: readonly string[];
 }
 
-export interface RotationConfig {
+export type RotationConfig = {
   keys: readonly string[];
   tierModels: TierModels;
   cooldownMs: number;
@@ -43,10 +43,10 @@ export class GeminiUpstreamError extends Error {
   }
 }
 
-const RETRYABLE_STATUSES = new Set([429, 500, 502, 503, 504]);
+const retryableStatuses = new Set([429, 500, 502, 503, 504]);
 
 export function isRetryableStatus(status: number): boolean {
-  return RETRYABLE_STATUSES.has(status);
+  return retryableStatuses.has(status);
 }
 
 export function keyFingerprint(key: string): string {
@@ -58,12 +58,13 @@ export function buildCombinations(
   models: readonly string[],
 ): Combination[] {
   const combos: Combination[] = [];
+
   for (const key of keys) {
-    const fp = keyFingerprint(key);
     for (const model of models) {
-      combos.push({ key, model, keyFingerprint: fp });
+      combos.push({ key, model, keyFingerprint: keyFingerprint(key) });
     }
   }
+
   return combos;
 }
 
@@ -86,11 +87,16 @@ export class CooldownTracker {
 
   isInCooldown(combo: Combination): boolean {
     const expiry = this.state.get(this.makeKey(combo));
-    if (expiry === undefined) return false;
+
+    if (expiry === undefined) {
+      return false;
+    }
+
     if (Date.now() >= expiry) {
       this.state.delete(this.makeKey(combo));
       return false;
     }
+
     return true;
   }
 
@@ -108,9 +114,12 @@ export class GeminiRotationManager {
   private readonly pools: Record<Tier, readonly Combination[]>;
   private readonly cooldown: CooldownTracker;
 
-  constructor(config: RotationConfig) {
-    const { keys, tierModels, cooldownMs, mode = "default" } = config;
-
+  constructor({ 
+    keys,
+    tierModels,
+    cooldownMs,
+    mode = "default"
+  }: RotationConfig) {
     if (keys.length === 0) {
       throw new Error("At least one GEMINI API key is required.");
     }
@@ -146,12 +155,14 @@ export class GeminiRotationManager {
     requestFn: (apiKey: string, model: string) => Promise<Response>,
   ): Promise<{ response: Response; model: string }> {
     const pool = this.pools[tier];
+
     if (pool.length === 0) {
       throw new AllCombinationsExhaustedError(tier, 0);
     }
 
     const healthy: Combination[] = [];
     const coolingDown: Combination[] = [];
+
     for (const combo of pool) {
       if (this.cooldown.isInCooldown(combo)) {
         coolingDown.push(combo);
@@ -159,6 +170,7 @@ export class GeminiRotationManager {
         healthy.push(combo);
       }
     }
+
     const ordered = [...healthy, ...coolingDown];
     const total = ordered.length;
 
@@ -169,6 +181,7 @@ export class GeminiRotationManager {
       log("info", `Gemini request: tier=${tier} key=${combo.keyFingerprint} model=${combo.model} attempt=${attempt}/${total}`);
 
       let response: Response;
+
       try {
         response = await requestFn(combo.key, combo.model);
       } catch (err: unknown) {
@@ -194,7 +207,13 @@ export class GeminiRotationManager {
       }
 
       let body: unknown;
-      try { body = await response.json(); } catch { body = await response.text().catch(() => ""); }
+
+      try { 
+        body = await response.json();
+      } catch { 
+        body = await response.text().catch(() => ""); 
+      }
+      
       throw new GeminiUpstreamError(status, body);
     }
 

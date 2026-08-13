@@ -1,31 +1,24 @@
 import { GeminiRotationManager } from "./rotation";
-import {
-  GEMINI_API_KEYS,
-  HAIKU_MODELS,
-  SONNET_MODELS,
-  OPUS_MODELS,
-  ROTATION_COOLDOWN_SECONDS,
-  ROTATION_MODE,
-} from "../config";
+import { config } from "../config";
 import { keyFingerprint } from "./rotation";
 import { log } from "../utils/logger.util";
 
 export const rotationManager = new GeminiRotationManager({
-  keys: GEMINI_API_KEYS,
+  keys: config.geminiApiKeys,
   tierModels: {
-    opus: [...OPUS_MODELS],
-    sonnet: [...SONNET_MODELS],
-    haiku: [...HAIKU_MODELS],
+    opus: [...config.opusModels],
+    sonnet: [...config.sonnetModels],
+    haiku: [...config.haikuModels],
   },
-  cooldownMs: ROTATION_COOLDOWN_SECONDS * 1000,
-  mode: ROTATION_MODE,
+  cooldownMs: config.rotationCooldownSeconds * 1000,
+  mode: config.rotationMode,
 });
 
 log("info", "Rotation manager initialized", {
-  mode: ROTATION_MODE,
-  keys: GEMINI_API_KEYS.map((k) => keyFingerprint(k)),
-  opus: [...OPUS_MODELS],
-  sonnet: [...SONNET_MODELS],
-  haiku: [...HAIKU_MODELS],
-  cooldownSeconds: ROTATION_COOLDOWN_SECONDS,
+  mode: config.rotationMode,
+  keys: config.geminiApiKeys.map((key) => keyFingerprint(key)),
+  opus: [...config.opusModels],
+  sonnet: [...config.sonnetModels],
+  haiku: [...config.haikuModels],
+  cooldownSeconds: config.rotationCooldownSeconds,
 });

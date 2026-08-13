@@ -98,14 +98,14 @@ ROTATION_COOLDOWN_SECONDS=60
 
 ### Rotation Modes
 
-The proxy supports two modes configured via `ROTATION_MODE` (or `ENABLE_ROTATION`):
+The proxy supports two modes configured via `ROTATION_MODE`:
 
-1. **`default` mode (`ROTATION_MODE="default"` or `ENABLE_ROTATION="false"`):**
+1. **`default` mode (`ROTATION_MODE="default"`):**
    - Uses **only the first API key** (`GEMINI_API_KEY` or `GEMINI_API_KEYS[0]`).
    - Uses all models configured for the target tier in sequence (`HAIKU_MODELS`, `SONNET_MODELS`, `OPUS_MODELS`).
    - If model A rate-limits, it falls back to model B using the first API key. Subsequent keys are not used.
 
-2. **`rotation` mode (`ROTATION_MODE="rotation"` or `ENABLE_ROTATION="true"`):**
+2. **`rotation` mode (`ROTATION_MODE="rotation"`):**
    - Rotates across **all API keys** and **all tier models**.
    - If you have 2 keys and 2 Haiku models (`A, B`), the sequence is:
      1. `KEY1 + A`

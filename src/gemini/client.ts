@@ -1,4 +1,4 @@
-import { GEMINI_API_KEY } from "../config";
+import { config } from "../config";
 import { stripModelSuffix } from "./tier";
 
 export async function callGeminiRaw(
@@ -6,7 +6,7 @@ export async function callGeminiRaw(
   model: string,
   apiKey?: string,
 ): Promise<Response> {
-  const key = apiKey ?? GEMINI_API_KEY;
+  const key = apiKey ?? config.geminiApiKey;
   const strippedModel = stripModelSuffix(model);
   return fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${strippedModel}:generateContent?key=${key}`,

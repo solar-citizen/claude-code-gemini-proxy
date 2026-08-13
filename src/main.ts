@@ -1,4 +1,4 @@
-import { DEFAULT_GEMINI_MODEL, PORT, LOG_LEVEL, ROTATION_MODE } from "./config";
+import { config } from "./config";
 import { anthropicToolsToGemini, anthropicMessagesToGeminiContents, geminiPartsToAnthropicBlocks } from "./converters";
 import { buildSseStream } from "./anthropic/sse";
 import { isAnthropicMessagesRequestBody } from "./anthropic/validators";
@@ -11,7 +11,7 @@ import { detectTier } from "./gemini/tier";
 import { AllCombinationsExhaustedError, GeminiUpstreamError } from "./gemini/rotation";
 
 Bun.serve({
-  port: PORT,
+  port: config.port,
   async fetch(req: Request): Promise<Response> {
     const start = Date.now();
     const { method } = req;
@@ -31,7 +31,7 @@ Bun.serve({
 
       const body = rawBody;
       const { messages, system, tools: anthropicTools, max_tokens, temperature, stream, model } = body;
-      const requestedModel = model?.trim() || DEFAULT_GEMINI_MODEL;
+      const requestedModel = model?.trim() || config.defaultGeminiModel;
 
       if (pathname === "/v1/models") {
         const responseData = {
@@ -112,12 +112,10 @@ Bun.serve({
         cached_tokens: cachedContentTokenCount ?? 0,
       };
 
-      const responseModel = actualModel;
-
       log("info", `${method} ${pathname} -> ${stopReason}`, {
         ms: Date.now() - start,
         tier,
-        model: responseModel,
+        model: actualModel,
         usage,
         toolCalls: blocks.filter((block): block is Extract<AnthropicOutputBlock, { type: "tool_use" }> => {
           return block.type === "tool_use";
@@ -125,7 +123,7 @@ Bun.serve({
       });
 
       if (stream) {
-        return new Response(buildSseStream(blocks, stopReason, responseModel, usage), {
+        return new Response(buildSseStream(blocks, stopReason, actualModel, usage), {
           headers: { "content-type": "text/event-stream; charset=utf-8", "cache-control": "no-cache", connection: "keep-alive" },
         });
       }
@@ -135,7 +133,7 @@ Bun.serve({
         type: "message",
         role: "assistant",
         content: blocks,
-        model: responseModel,
+        model: actualModel,
         stop_reason: stopReason,
         stop_sequence: null,
         usage: {
@@ -151,6 +149,7 @@ Bun.serve({
     } catch (err: unknown) {
       if (err instanceof AllCombinationsExhaustedError) {
         log("error", "all combinations exhausted", { message: err.message, ms: Date.now() - start });
+
         return new Response(
           JSON.stringify({
             type: "error",
@@ -168,6 +167,7 @@ Bun.serve({
 
       if (err instanceof GeminiUpstreamError) {
         const message = getErrorMessage(err);
+        
         log("error", "gemini upstream error (non-retryable)", { status: err.status, ms: Date.now() - start });
 
         return new Response(
@@ -197,8 +197,8 @@ Bun.serve({
   },
 });
 
-console.log(`Gemini<->Anthropic proxy listening on http://127.0.0.1:${PORT} in ${ROTATION_MODE} mode`);
+console.log(`Gemini<->Anthropic proxy listening on http://127.0.0.1:${config.port} in ${config.rotationMode} mode`);
 
-if (LOG_LEVEL > 1) {
-  console.log(`Logs: ${getLogFilePath()}${LOG_LEVEL === 3 ? " (long logs: full bodies logged)" : " (short logs)"}`);
+if (config.logLevel > 1) {
+  console.log(`Logs: ${getLogFilePath()}${config.logLevel === 3 ? " (long logs: full bodies logged)" : " (short logs)"}`);
 }
