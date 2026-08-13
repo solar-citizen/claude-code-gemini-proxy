@@ -1,4 +1,4 @@
-import { DEFAULT_GEMINI_MODEL } from "../src/config";
+import { config } from "../src/config";
 
 type ErrorResponse = {
   type: "error";
@@ -54,14 +54,14 @@ describe("Proxy Server Integration", () => {
               data: [
                 {
                   type: "model",
-                  id: DEFAULT_GEMINI_MODEL,
-                  display_name: DEFAULT_GEMINI_MODEL,
+                  id: config.defaultGeminiModel,
+                  display_name: config.defaultGeminiModel,
                   created_at: "2026-01-01T00:00:00Z",
                 },
               ],
               has_more: false,
-              first_id: DEFAULT_GEMINI_MODEL,
-              last_id: DEFAULT_GEMINI_MODEL,
+              first_id: config.defaultGeminiModel,
+              last_id: config.defaultGeminiModel,
             }),
             { headers: { "content-type": "application/json" } }
           );
@@ -75,7 +75,7 @@ describe("Proxy Server Integration", () => {
     const json: unknown = await res.json();
     expect(isModelsResponse(json)).toBe(true);
     if (isModelsResponse(json)) {
-      expect(json.data[0].id).toBe(DEFAULT_GEMINI_MODEL);
+      expect(json.data[0].id).toBe(config.defaultGeminiModel);
     }
     server.stop();
   });

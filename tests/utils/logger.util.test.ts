@@ -10,7 +10,7 @@ mock.module("fs", () => {
 });
 
 import { log, debugLog, getLogFilePath } from "../../src/utils/logger.util";
-import { LOG_LEVEL } from "../../src/config";
+import { config } from "../../src/config";
 
 describe("Logger Util", () => {
   let consoleLogSpy: ReturnType<typeof spyOn>;
@@ -24,7 +24,7 @@ describe("Logger Util", () => {
   });
 
   it("has a default LOG_LEVEL of 1 in tests", () => {
-    expect(LOG_LEVEL).toBe(1);
+    expect(config.logLevel).toBe(1);
   });
 
   it("getLogFilePath returns a path containing proxy-", () => {
