@@ -50,3 +50,32 @@ export const OPUS_MODELS: readonly string[] = parseModelList(
 export const ROTATION_COOLDOWN_SECONDS = Number(
   process.env.ROTATION_COOLDOWN_SECONDS ?? 60,
 );
+
+export type RotationMode = "default" | "rotation";
+
+function parseRotationMode(): RotationMode {
+  const mode = process.env.ROTATION_MODE?.toLowerCase().trim();
+
+  if (mode === "rotation" || mode === "true" || mode === "1" || mode === "enabled") {
+    return "rotation";
+  }
+
+  if (mode === "default" || mode === "false" || mode === "0" || mode === "disabled") {
+    return "default";
+  }
+
+  const enableRotation = process.env.ENABLE_ROTATION?.toLowerCase().trim();
+
+  if (enableRotation === "true" || enableRotation === "rotation" || enableRotation === "1" || enableRotation === "enabled") {
+    return "rotation";
+  }
+  
+  if (enableRotation === "false" || enableRotation === "default" || enableRotation === "0" || enableRotation === "disabled") {
+    return "default";
+  }
+
+  return "default";
+}
+
+export const ROTATION_MODE: RotationMode = parseRotationMode();
+

@@ -40,4 +40,30 @@ describe("Config", () => {
     expect(config.PORT).toBe(3000);
     expect(config.LOG_LEVEL).toBe(3);
   });
+
+  it("parses ROTATION_MODE correctly with defaults and custom values", async () => {
+    delete process.env.ROTATION_MODE;
+    delete process.env.ENABLE_ROTATION;
+    process.env.GEMINI_API_KEY = "test-key";
+
+    const configDefault = await import(`../src/config?t=${Date.now()}_3`);
+    expect(configDefault.ROTATION_MODE).toBe("default");
+
+    process.env.ROTATION_MODE = "rotation";
+    const configRotation = await import(`../src/config?t=${Date.now()}_4`);
+    expect(configRotation.ROTATION_MODE).toBe("rotation");
+
+    process.env.ROTATION_MODE = "default";
+    const configDefaultExplicit = await import(`../src/config?t=${Date.now()}_5`);
+    expect(configDefaultExplicit.ROTATION_MODE).toBe("default");
+
+    delete process.env.ROTATION_MODE;
+    process.env.ENABLE_ROTATION = "true";
+    const configEnableTrue = await import(`../src/config?t=${Date.now()}_6`);
+    expect(configEnableTrue.ROTATION_MODE).toBe("rotation");
+
+    process.env.ENABLE_ROTATION = "false";
+    const configEnableFalse = await import(`../src/config?t=${Date.now()}_7`);
+    expect(configEnableFalse.ROTATION_MODE).toBe("default");
+  });
 });

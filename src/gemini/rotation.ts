@@ -2,6 +2,7 @@ import { createHash } from "crypto";
 import { log } from "../utils/logger.util";
 
 export type Tier = "opus" | "sonnet" | "haiku";
+export type RotationMode = "default" | "rotation";
 
 export interface Combination {
   readonly key: string;
@@ -19,6 +20,7 @@ export interface RotationConfig {
   keys: readonly string[];
   tierModels: TierModels;
   cooldownMs: number;
+  mode?: RotationMode;
 }
 
 export class AllCombinationsExhaustedError extends Error {
@@ -102,21 +104,26 @@ export class CooldownTracker {
 }
 
 export class GeminiRotationManager {
+  public readonly mode: RotationMode;
   private readonly pools: Record<Tier, readonly Combination[]>;
   private readonly cooldown: CooldownTracker;
 
   constructor(config: RotationConfig) {
-    const { keys, tierModels, cooldownMs } = config;
+    const { keys, tierModels, cooldownMs, mode = "default" } = config;
 
     if (keys.length === 0) {
       throw new Error("At least one GEMINI API key is required.");
     }
 
+    this.mode = mode;
     this.cooldown = new CooldownTracker(cooldownMs);
+
+    const activeKeys = this.mode === "default" ? [keys[0]] : keys;
+
     this.pools = {
-      opus: buildCombinations(keys, tierModels.opus),
-      sonnet: buildCombinations(keys, tierModels.sonnet),
-      haiku: buildCombinations(keys, tierModels.haiku),
+      opus: buildCombinations(activeKeys, tierModels.opus),
+      sonnet: buildCombinations(activeKeys, tierModels.sonnet),
+      haiku: buildCombinations(activeKeys, tierModels.haiku),
     };
 
     for (const tier of ["opus", "sonnet", "haiku"] as const) {

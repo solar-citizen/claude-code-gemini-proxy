@@ -20,6 +20,7 @@ function makeConfig(overrides?: Partial<RotationConfig>): RotationConfig {
       haiku: ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite"],
     },
     cooldownMs: 60_000,
+    mode: "rotation",
     ...overrides,
   };
 }
@@ -627,5 +628,122 @@ describe("GeminiRotationManager", () => {
     const json = await response.json();
     expect(json).toEqual(successBody);
     expect(model).toBe("gemini-3.5-flash-lite");
+  });
+
+  // ── Rotation Modes: Default vs Rotation ──
+
+  describe("Rotation Modes (default vs rotation)", () => {
+    it("defaults to 'default' mode when mode is omitted", () => {
+      const mgr = new GeminiRotationManager({
+        keys: ["KEY1", "KEY2"],
+        tierModels: {
+          opus: ["gemini-3.6-flash"],
+          sonnet: ["gemini-3.5-flash", "gemini-3-flash"],
+          haiku: ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite"],
+        },
+        cooldownMs: 60_000,
+      });
+      expect(mgr.mode).toBe("default");
+      const pool = mgr.getPool("haiku");
+      expect(pool.map((c) => `${c.key}:${c.model}`)).toEqual([
+        "KEY1:gemini-3.5-flash-lite",
+        "KEY1:gemini-3.1-flash-lite",
+      ]);
+    });
+
+    it("in 'default' mode, only uses the first key but rotates through all models for that tier", async () => {
+      const mgr = new GeminiRotationManager({
+        keys: ["KEY1", "KEY2", "KEY3"],
+        tierModels: {
+          opus: ["m-opus"],
+          sonnet: ["m-sonnet"],
+          haiku: ["h-model-1", "h-model-2"],
+        },
+        cooldownMs: 60_000,
+        mode: "default",
+      });
+
+      expect(mgr.mode).toBe("default");
+
+      const pool = mgr.getPool("haiku");
+      expect(pool).toHaveLength(2);
+      expect(pool[0].key).toBe("KEY1");
+      expect(pool[0].model).toBe("h-model-1");
+      expect(pool[1].key).toBe("KEY1");
+      expect(pool[1].model).toBe("h-model-2");
+
+      // First request: h-model-1 fails with 429, h-model-2 succeeds (both with KEY1)
+      const { fn, calls } = mockRequestFn([
+        mockResponse(429),
+        mockResponse(200),
+      ]);
+
+      const result = await mgr.executeWithRotation("haiku", fn);
+      expect(result.model).toBe("h-model-2");
+      expect(calls).toHaveLength(2);
+      expect(calls[0].apiKey).toBe("KEY1");
+      expect(calls[0].model).toBe("h-model-1");
+      expect(calls[1].apiKey).toBe("KEY1");
+      expect(calls[1].model).toBe("h-model-2");
+    });
+
+    it("in 'default' mode, fails when all models for the first key fail (never attempts KEY2)", async () => {
+      const mgr = new GeminiRotationManager({
+        keys: ["KEY1", "KEY2"],
+        tierModels: {
+          opus: ["m-opus"],
+          sonnet: ["m-sonnet"],
+          haiku: ["h-model-1", "h-model-2"],
+        },
+        cooldownMs: 60_000,
+        mode: "default",
+      });
+
+      const { fn, calls } = mockRequestFn([
+        mockResponse(429),
+        mockResponse(429),
+      ]);
+
+      await expect(mgr.executeWithRotation("haiku", fn)).rejects.toThrow(AllCombinationsExhaustedError);
+      expect(calls).toHaveLength(2);
+      expect(calls.every((c) => c.apiKey === "KEY1")).toBe(true);
+    });
+
+    it("in 'rotation' mode, rotates through all keys and all tier models", async () => {
+      const mgr = new GeminiRotationManager({
+        keys: ["KEY1", "KEY2"],
+        tierModels: {
+          opus: ["m-opus"],
+          sonnet: ["m-sonnet"],
+          haiku: ["h1", "h2"],
+        },
+        cooldownMs: 60_000,
+        mode: "rotation",
+      });
+
+      expect(mgr.mode).toBe("rotation");
+
+      const pool = mgr.getPool("haiku");
+      expect(pool.map((c) => `${c.key}:${c.model}`)).toEqual([
+        "KEY1:h1",
+        "KEY1:h2",
+        "KEY2:h1",
+        "KEY2:h2",
+      ]);
+
+      // KEY1+h1 fails, KEY1+h2 fails, KEY2+h1 succeeds
+      const { fn, calls } = mockRequestFn([
+        mockResponse(429),
+        mockResponse(429),
+        mockResponse(200),
+      ]);
+
+      const result = await mgr.executeWithRotation("haiku", fn);
+      expect(result.model).toBe("h1");
+      expect(calls).toHaveLength(3);
+      expect(calls[0]).toEqual({ apiKey: "KEY1", model: "h1" });
+      expect(calls[1]).toEqual({ apiKey: "KEY1", model: "h2" });
+      expect(calls[2]).toEqual({ apiKey: "KEY2", model: "h1" });
+    });
   });
 });

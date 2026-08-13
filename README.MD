@@ -87,18 +87,31 @@ HAIKU_MODELS="gemini-3.5-flash-lite[1m],gemini-3.1-flash-lite[1m]"
 SONNET_MODELS="gemini-3.5-flash[1m],gemini-3-flash[1m]"
 OPUS_MODELS="gemini-3.6-flash[1m]"
 
+# Optional: Rotation mode ("default" or "rotation")
+# default  -> Uses only the 1st key, but enables model failover within tier
+# rotation -> Rotates through all API keys and models for each tier
+ROTATION_MODE="default"
+
 # Optional: Cooldown in seconds for a failed key/model combination (default: 60)
 ROTATION_COOLDOWN_SECONDS=60
 ```
 
-### How Rotation Works
+### Rotation Modes
 
-The proxy generates a deterministic rotation sequence based on your keys and the incoming tier. For example, if you have 2 keys and 2 Haiku models (`A, B`), the sequence is:
+The proxy supports two modes configured via `ROTATION_MODE` (or `ENABLE_ROTATION`):
 
-1. `KEY1 + A`
-2. `KEY1 + B`
-3. `KEY2 + A`
-4. `KEY2 + B`
+1. **`default` mode (`ROTATION_MODE="default"` or `ENABLE_ROTATION="false"`):**
+   - Uses **only the first API key** (`GEMINI_API_KEY` or `GEMINI_API_KEYS[0]`).
+   - Uses all models configured for the target tier in sequence (`HAIKU_MODELS`, `SONNET_MODELS`, `OPUS_MODELS`).
+   - If model A rate-limits, it falls back to model B using the first API key. Subsequent keys are not used.
+
+2. **`rotation` mode (`ROTATION_MODE="rotation"` or `ENABLE_ROTATION="true"`):**
+   - Rotates across **all API keys** and **all tier models**.
+   - If you have 2 keys and 2 Haiku models (`A, B`), the sequence is:
+     1. `KEY1 + A`
+     2. `KEY1 + B`
+     3. `KEY2 + A`
+     4. `KEY2 + B`
 
 **Important Guarantees:**
 - **Sequential Failover:** Requests are retried sequentially. There is no background request spam.
