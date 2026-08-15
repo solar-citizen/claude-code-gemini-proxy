@@ -75,6 +75,10 @@ Swap any tier's env var to any of these to change what handles that tier's reque
 
 ## Multiple Keys & Model Rotation
 
+> [!WARNING]
+> **Legal Disclaimer / Notice:**
+> While this proxy technically supports rotating between many different API keys, using multiple keys or accounts to circumvent rate limits or daily quotas is strictly prohibited by Google's Terms of Service. We strongly recommend using the `default` mode with a single API key (`1 key x models` combination) to ensure full compliance with Google's API policies.
+
 You can configure the proxy to rotate across multiple API keys and fallback models automatically. Configure this in your `.env` file (copied from `.env.example`):
 
 ```env
