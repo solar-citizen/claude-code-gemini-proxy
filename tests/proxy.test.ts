@@ -1,4 +1,5 @@
 import { config } from "../src/config";
+import { handleRequest } from "../src/main";
 
 type ErrorResponse = {
   type: "error";
@@ -44,99 +45,71 @@ function isModelsResponse(value: unknown): value is { data: Array<{ id: string }
 
 describe("Proxy Server Integration", () => {
   it("handles GET /v1/models successfully", async () => {
-    const server = Bun.serve({
-      port: 0,
-      fetch(req) {
-        const url = new URL(req.url);
-        if (url.pathname === "/v1/models") {
-          return new Response(
-            JSON.stringify({
-              data: [
-                {
-                  type: "model",
-                  id: config.defaultGeminiModel,
-                  display_name: config.defaultGeminiModel,
-                  created_at: "2026-01-01T00:00:00Z",
-                },
-              ],
-              has_more: false,
-              first_id: config.defaultGeminiModel,
-              last_id: config.defaultGeminiModel,
-            }),
-            { headers: { "content-type": "application/json" } }
-          );
-        }
-        return new Response("not found", { status: 404 });
-      },
+    const req = new Request("http://localhost:8787/v1/models", {
+      method: "GET",
     });
 
-    const res = await fetch(`http://localhost:${server.port}/v1/models`);
+    const res = await handleRequest(req);
     expect(res.status).toBe(200);
     const json: unknown = await res.json();
     expect(isModelsResponse(json)).toBe(true);
     if (isModelsResponse(json)) {
-      expect(json.data[0].id).toBe(config.defaultGeminiModel);
+      const modelIds = json.data.map(({ id }) => id);
+      expect(modelIds).toContain(config.defaultGeminiModel);
     }
-    server.stop();
   });
 
   it("handles health check HEAD/GET", async () => {
-    const server = Bun.serve({
-      port: 0,
-      fetch(req) {
-        if (req.method === "HEAD" || req.method === "GET") {
-          return new Response("ok", { status: 200 });
-        }
-        return new Response("not found", { status: 404 });
-      },
-    });
-
-    const resGet = await fetch(`http://localhost:${server.port}/health`);
+    const reqGet = new Request("http://localhost:8787/health", { method: "GET" });
+    const resGet = await handleRequest(reqGet);
     expect(resGet.status).toBe(200);
     expect(await resGet.text()).toBe("ok");
 
-    const resHead = await fetch(`http://localhost:${server.port}/health`, { method: "HEAD" });
+    const reqHead = new Request("http://localhost:8787/health", { method: "HEAD" });
+    const resHead = await handleRequest(reqHead);
     expect(resHead.status).toBe(200);
-    server.stop();
   });
 
-  it("returns 400 for invalid request body", async () => {
-    const server = Bun.serve({
-      port: 0,
-      async fetch(req) {
-        const url = new URL(req.url);
-        if (url.pathname === "/v1/messages") {
-          try {
-            const body: unknown = await req.json();
-            if (typeof body !== "object" || body === null || !("messages" in body)) {
-              return new Response(
-                JSON.stringify({ type: "error", error: { message: "Invalid request body" } }),
-                { status: 400, headers: { "content-type": "application/json" } }
-              );
-            }
-          } catch {
-            return new Response(
-              JSON.stringify({ type: "error", error: { message: "Invalid request body" } }),
-              { status: 400, headers: { "content-type": "application/json" } }
-            );
-          }
-        }
-        return new Response("not found", { status: 404 });
-      },
+  it("returns 400 for invalid JSON on POST /v1/messages", async () => {
+    const req = new Request("http://localhost:8787/v1/messages", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "invalid-json",
     });
 
-    const res = await fetch(`http://localhost:${server.port}/v1/messages`, {
+    const res = await handleRequest(req);
+    expect(res.status).toBe(400);
+    const json: unknown = await res.json();
+    expect(isErrorResponse(json)).toBe(true);
+    if (isErrorResponse(json)) {
+      expect(json.error.message).toBe("Invalid JSON in request body");
+    }
+  });
+
+  it("returns 400 for invalid request body schema", async () => {
+    const req = new Request("http://localhost:8787/v1/messages", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ invalid: true }),
     });
 
+    const res = await handleRequest(req);
     expect(res.status).toBe(400);
     const json: unknown = await res.json();
     expect(isErrorResponse(json)).toBe(true);
     if (isErrorResponse(json)) {
       expect(json.type).toBe("error");
     }
-    server.stop();
+  });
+
+  it("returns 404 for unknown endpoints", async () => {
+    const req = new Request("http://localhost:8787/unknown", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({}),
+    });
+
+    const res = await handleRequest(req);
+    expect(res.status).toBe(404);
   });
 });
