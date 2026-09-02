@@ -10,54 +10,76 @@ import { rotationManager } from "./gemini/rotation-instance";
 import { detectTier } from "./gemini/tier";
 import { AllCombinationsExhaustedError, GeminiUpstreamError } from "./gemini/rotation";
 
-Bun.serve({
-  port: config.port,
-  async fetch(req: Request): Promise<Response> {
-    const start = Date.now();
-    const { method } = req;
-    const { pathname } = new URL(req.url);
+export async function handleRequest(req: Request): Promise<Response> {
+  const start = Date.now();
+  const { method } = req;
+  const { pathname } = new URL(req.url);
+
+  try {
+    if (pathname === "/v1/models") {
+      if (method !== "GET" && method !== "HEAD") {
+        return new Response("Method not allowed", { status: 405 });
+      }
+
+      const allModels = Array.from(new Set([
+        config.defaultGeminiModel,
+        ...config.haikuModels,
+        ...config.sonnetModels,
+        ...config.opusModels,
+      ]));
+
+      const responseData = {
+        data: allModels.map((id) => ({
+          type: "model",
+          id,
+          display_name: id,
+          created_at: "2026-01-01T00:00:00Z",
+        })),
+        has_more: false,
+        first_id: allModels[0],
+        last_id: allModels[allModels.length - 1],
+      };
+
+      return new Response(JSON.stringify(responseData), {
+        headers: { "content-type": "application/json" },
+      });
+    }
+
+    if (pathname === "/health" || ((method === "HEAD" || method === "GET") && pathname === "/")) {
+      return new Response("ok", { status: 200 });
+    }
+
+    if (method !== "POST" || !pathname.endsWith("/v1/messages")) {
+      return new Response("not found", { status: 404 });
+    }
+
+    let rawBody: unknown;
 
     try {
-      const rawBody: unknown = await req.json();
-      debugLog("request body", rawBody);
+      rawBody = await req.json();
+    } catch {
+      log("error", "invalid JSON in request body", { ms: Date.now() - start });
 
-      if (!isAnthropicMessagesRequestBody(rawBody)) {
-        log("error", "invalid request body", { ms: Date.now() - start });
-        return new Response(
-          JSON.stringify({ type: "error", error: { message: "Invalid request body" } }),
-          { status: 400, headers: { "content-type": "application/json" } },
-        );
-      }
+      return new Response(
+        JSON.stringify({ type: "error", error: { message: "Invalid JSON in request body" } }),
+        { status: 400, headers: { "content-type": "application/json" } },
+      );
+    }
 
-      const body = rawBody;
-      const { messages, system, tools: anthropicTools, max_tokens, temperature, stream, model } = body;
-      const requestedModel = model?.trim() || config.defaultGeminiModel;
+    debugLog("request body", rawBody);
 
-      if (pathname === "/v1/models") {
-        const responseData = {
-          data: [{
-            type: "model",
-            id: requestedModel,
-            display_name: requestedModel,
-            created_at: "2026-01-01T00:00:00Z",
-          }],
-          has_more: false,
-          first_id: requestedModel,
-          last_id: requestedModel,
-        };
+    if (!isAnthropicMessagesRequestBody(rawBody)) {
+      log("error", "invalid request body", { ms: Date.now() - start });
 
-        return new Response(JSON.stringify(responseData), {
-          headers: { "content-type": "application/json" },
-        });
-      }
+      return new Response(
+        JSON.stringify({ type: "error", error: { message: "Invalid request body" } }),
+        { status: 400, headers: { "content-type": "application/json" } },
+      );
+    }
 
-      if (method === "HEAD" || method === "GET") {
-        return new Response("ok", { status: 200 });
-      }
-
-      if (method !== "POST" || !pathname.endsWith("/v1/messages")) {
-        return new Response("not found", { status: 404 });
-      }
+    const body = rawBody;
+    const { messages, system, tools: anthropicTools, max_tokens, temperature, stream, model } = body;
+    const requestedModel = model?.trim() || config.defaultGeminiModel;
 
       const generationConfig: GeminiGenerationConfig = {
         maxOutputTokens: max_tokens ?? 4096,
@@ -193,12 +215,18 @@ Bun.serve({
         status: 502,
         headers: { "content-type": "application/json" },
       });
-    }
-  },
-});
+  }
+}
 
-console.log(`Gemini<->Anthropic proxy listening on http://127.0.0.1:${config.port} in ${config.rotationMode} mode`);
+if (import.meta.main) {
+  Bun.serve({
+    port: config.port,
+    fetch: handleRequest,
+  });
 
-if (config.logLevel > 1) {
-  console.log(`Logs: ${getLogFilePath()}${config.logLevel === 3 ? " (long logs: full bodies logged)" : " (short logs)"}`);
+  console.log(`Gemini<->Anthropic proxy listening on http://127.0.0.1:${config.port} in ${config.rotationMode} mode`);
+
+  if (config.logLevel > 1) {
+    console.log(`Logs: ${getLogFilePath()}${config.logLevel === 3 ? " (long logs: full bodies logged)" : " (short logs)"}`);
+  }
 }
