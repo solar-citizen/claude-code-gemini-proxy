@@ -58,6 +58,62 @@ describe("Converters", () => {
         },
       ]);
     });
+
+    it("converts tools with complex nested array schema", () => {
+      const tools = [
+        {
+          name: "query_database",
+          description: "Run query",
+          input_schema: {
+            type: "object",
+            properties: {
+              query: {
+                type: "object",
+                properties: {
+                  where: {
+                    type: "array",
+                    items: {
+                      type: "array",
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      ];
+
+      const result = anthropicToolsToGemini(tools as any);
+      expect(result).toEqual([
+        {
+          functionDeclarations: [
+            {
+              name: "query_database",
+              description: "Run query",
+              parameters: {
+                type: "object",
+                properties: {
+                  query: {
+                    type: "object",
+                    properties: {
+                      where: {
+                        type: "array",
+                        items: {
+                          type: "array",
+                          items: {
+                            type: "string",
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          ],
+        },
+      ]);
+    });
   });
 
   describe("anthropicMessagesToGeminiContents", () => {
