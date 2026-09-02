@@ -88,8 +88,8 @@ GEMINI_API_KEYS="key1,key2,key3"
 # Define ordered fallback models for each tier.
 # Include Claude's [1m] suffix so it uses the 1M context window.
 HAIKU_MODELS="gemini-3.5-flash-lite[1m],gemini-3.1-flash-lite[1m]"
-SONNET_MODELS="gemini-3.5-flash[1m],gemini-3-flash[1m]"
-OPUS_MODELS="gemini-3.6-flash[1m]"
+SONNET_MODELS="gemini-3.7-flash[1m],gemini-3.6-flash[1m],gemini-3.5-flash[1m]"
+OPUS_MODELS=""
 
 # Optional: Rotation mode ("default" or "rotation")
 # default  -> Uses only the 1st key, but enables model failover within tier
