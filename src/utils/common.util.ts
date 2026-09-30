@@ -5,3 +5,5 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
 export function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((v) => typeof v === "string");
 }
+
+export const timeoutMs = 30_000;
