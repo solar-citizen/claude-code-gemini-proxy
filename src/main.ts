@@ -9,6 +9,7 @@ import { log, debugLog, getLogFilePath } from "./utils/logger.util";
 import { rotationManager } from "./gemini/rotation-instance";
 import { detectTier } from "./gemini/tier";
 import { AllCombinationsExhaustedError, GeminiUpstreamError } from "./gemini/rotation";
+import { timeoutMs } from "./utils/common.util";
 
 export async function handleRequest(req: Request): Promise<Response> {
   const start = Date.now();
@@ -106,7 +107,7 @@ export async function handleRequest(req: Request): Promise<Response> {
 
       const { response: geminiResponse, model: actualModel } = await rotationManager.executeWithRotation(
         tier,
-        (apiKey, geminiModel) => callGeminiRaw(geminiBody, geminiModel, apiKey),
+        (apiKey, geminiModel) => callGeminiRaw(geminiBody, geminiModel, timeoutMs, apiKey),
       );
 
       const geminiRes: unknown = await geminiResponse.json();
