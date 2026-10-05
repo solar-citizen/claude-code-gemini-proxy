@@ -1,5 +1,5 @@
-function parseApiKeys(): string[] {
-  const multi = process.env.GEMINI_API_KEYS;
+function parseApiKeys(env: Record<string, string | undefined>): string[] {
+  const multi = env.GEMINI_API_KEYS;
 
   if (multi) {
     const keys = multi.split(",").map((k) => k.trim()).filter(Boolean);
@@ -12,7 +12,7 @@ function parseApiKeys(): string[] {
     return keys;
   }
 
-  const single = process.env.GEMINI_API_KEY;
+  const single = env.GEMINI_API_KEY;
 
   if (!single) {
     console.error("Neither GEMINI_API_KEYS nor GEMINI_API_KEY is set");
@@ -22,8 +22,8 @@ function parseApiKeys(): string[] {
   return [single];
 }
 
-function parseModelList(envVar: string, fallback: string[]): string[] {
-  const raw = process.env[envVar];
+function parseModelList(env: Record<string, string | undefined>, envVar: string, fallback: string[]): string[] {
+  const raw = env[envVar];
 
   if (!raw) {
     return fallback;
@@ -34,9 +34,9 @@ function parseModelList(envVar: string, fallback: string[]): string[] {
   return models.length > 0 ? models : fallback;
 }
 
-function parseBoolean(envVar: string, defaultValue: boolean): boolean {
-  const value = process.env[envVar]?.toLowerCase().trim();
-  
+function parseBoolean(env: Record<string, string | undefined>, envVar: string, defaultValue: boolean): boolean {
+  const value = env[envVar]?.toLowerCase().trim();
+
   if (value === "true" || value === "1") {
     return true;
   }
@@ -50,8 +50,8 @@ function parseBoolean(envVar: string, defaultValue: boolean): boolean {
 
 export type RotationMode = "default" | "rotation";
 
-function parseRotationMode(): RotationMode {
-  const mode = process.env.ROTATION_MODE?.toLowerCase().trim();
+function parseRotationMode(env: Record<string, string | undefined>): RotationMode {
+  const mode = env.ROTATION_MODE?.toLowerCase().trim();
 
   if (mode === "rotation" || mode === "true" || mode === "1" || mode === "enabled") {
     return "rotation";
@@ -61,7 +61,7 @@ function parseRotationMode(): RotationMode {
     return "default";
   }
 
-  const enableRotation = process.env.ENABLE_ROTATION?.toLowerCase().trim();
+  const enableRotation = env.ENABLE_ROTATION?.toLowerCase().trim();
 
   if (enableRotation === "true" || enableRotation === "rotation" || enableRotation === "1" || enableRotation === "enabled") {
     return "rotation";
@@ -74,26 +74,26 @@ function parseRotationMode(): RotationMode {
   return "default";
 }
 
-function parseConfig() {
-  const geminiApiKeys = parseApiKeys();
-  const defaultGeminiModel = process.env.DEFAULT_GEMINI_MODEL ?? "gemini-3.5-flash-lite";
+export function parseConfig(env: Record<string, string | undefined> = process.env) {
+  const geminiApiKeys = parseApiKeys(env);
+  const defaultGeminiModel = env.DEFAULT_GEMINI_MODEL ?? "gemini-3.5-flash-lite";
 
   return {
     geminiApiKeys,
     geminiApiKey: geminiApiKeys[0],
     defaultGeminiModel,
-    port: Number(process.env.PORT ?? 8787),
-    logLevel: parseInt(process.env.LOG_LEVEL ?? "1", 10),
-    haikuModels: parseModelList("HAIKU_MODELS", [defaultGeminiModel]),
-    sonnetModels: parseModelList("SONNET_MODELS", [defaultGeminiModel]),
-    opusModels: parseModelList("OPUS_MODELS", [defaultGeminiModel]),
+    port: Number(env.PORT ?? 8787),
+    logLevel: parseInt(env.LOG_LEVEL ?? "1", 10),
+    haikuModels: parseModelList(env, "HAIKU_MODELS", [defaultGeminiModel]),
+    sonnetModels: parseModelList(env, "SONNET_MODELS", [defaultGeminiModel]),
+    opusModels: parseModelList(env, "OPUS_MODELS", [defaultGeminiModel]),
     rotationCooldownSeconds: Number(
-      process.env.ROTATION_COOLDOWN_SECONDS ?? 60,
+      env.ROTATION_COOLDOWN_SECONDS ?? 60,
     ),
-    rotationMode: parseRotationMode(),
-    enableAutoSubagentRouting: parseBoolean("ENABLE_AUTO_SUBAGENT_ROUTING", true),
-    haikuSubagentPatterns: parseModelList("HAIKU_SUBAGENT_PATTERNS", ["read-only search agent", "subagent-driven-development", "implementation plan step", "explore agent"]),
-    forceHaikuTools: parseModelList("FORCE_HAIKU_TOOLS", ["Grep", "Glob", "Read"]),
+    rotationMode: parseRotationMode(env),
+    enableAutoSubagentRouting: parseBoolean(env, "ENABLE_AUTO_SUBAGENT_ROUTING", true),
+    haikuSubagentPatterns: parseModelList(env, "HAIKU_SUBAGENT_PATTERNS", ["read-only search agent", "subagent-driven-development", "implementation plan step", "explore agent"]),
+    forceHaikuTools: parseModelList(env, "FORCE_HAIKU_TOOLS", ["Grep", "Glob", "Read"]),
   };
 }
 

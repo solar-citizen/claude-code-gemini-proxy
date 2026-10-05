@@ -1,27 +1,13 @@
-import { describe, it, expect, beforeEach, afterEach } from "bun:test";
+import { describe, it, expect } from "bun:test";
+import { parseConfig } from "../src/config";
 
-describe("Config", () => {
-  const originalEnv = { ...process.env };
+describe("Config Parsing", () => {
+  it("parses environment variables correctly with defaults", () => {
+    const fakeEnv = {
+      GEMINI_API_KEY: "test-gemini-key-1",
+    };
 
-  beforeEach(() => {
-    process.env = { ...originalEnv };
-  });
-
-  afterEach(() => {
-    process.env = { ...originalEnv };
-  });
-
-  it("parses environment variables correctly with defaults", async () => {
-    delete process.env.GEMINI_API_KEYS;
-    process.env.GEMINI_API_KEY = "test-gemini-key-1";
-    delete process.env.DEFAULT_GEMINI_MODEL;
-    delete process.env.PORT;
-    delete process.env.LOG_LEVEL;
-    delete process.env.ENABLE_AUTO_SUBAGENT_ROUTING;
-    delete process.env.HAIKU_SUBAGENT_PATTERNS;
-    delete process.env.FORCE_HAIKU_TOOLS;
-
-    const { config } = await import(`../src/config?t=${Date.now()}_1`);
+    const config = parseConfig(fakeEnv);
 
     expect(config.geminiApiKey).toBe("test-gemini-key-1");
     expect(config.defaultGeminiModel).toBe("gemini-3.5-flash-lite");
@@ -37,17 +23,18 @@ describe("Config", () => {
     expect(config.forceHaikuTools).toEqual(["Grep", "Glob", "Read"]);
   });
 
-  it("parses custom environment variables correctly", async () => {
-    delete process.env.GEMINI_API_KEYS;
-    process.env.GEMINI_API_KEY = "custom-key-2";
-    process.env.DEFAULT_GEMINI_MODEL = "gemini-pro";
-    process.env.PORT = "3000";
-    process.env.LOG_LEVEL = "3";
-    process.env.ENABLE_AUTO_SUBAGENT_ROUTING = "false";
-    process.env.HAIKU_SUBAGENT_PATTERNS = "test-pattern-1, test-pattern-2";
-    process.env.FORCE_HAIKU_TOOLS = "TestTool1, TestTool2";
+  it("parses custom environment variables correctly", () => {
+    const fakeEnv = {
+      GEMINI_API_KEY: "custom-key-2",
+      DEFAULT_GEMINI_MODEL: "gemini-pro",
+      PORT: "3000",
+      LOG_LEVEL: "3",
+      ENABLE_AUTO_SUBAGENT_ROUTING: "false",
+      HAIKU_SUBAGENT_PATTERNS: "test-pattern-1, test-pattern-2",
+      FORCE_HAIKU_TOOLS: "TestTool1, TestTool2",
+    };
 
-    const { config } = await import(`../src/config?t=${Date.now()}_2`);
+    const config = parseConfig(fakeEnv);
 
     expect(config.geminiApiKey).toBe("custom-key-2");
     expect(config.defaultGeminiModel).toBe("gemini-pro");
@@ -58,23 +45,14 @@ describe("Config", () => {
     expect(config.forceHaikuTools).toEqual(["TestTool1", "TestTool2"]);
   });
 
-  it("parses ROTATION_MODE correctly with defaults and custom values", async () => {
-    delete process.env.ROTATION_MODE;
-    process.env.GEMINI_API_KEY = "test-key";
-
-    const { config: configDefault } = await import(`../src/config?t=${Date.now()}_3`);
+  it("parses ROTATION_MODE correctly with defaults and custom values", () => {
+    const configDefault = parseConfig({ GEMINI_API_KEY: "test-key" });
     expect(configDefault.rotationMode).toBe("default");
 
-    process.env.ROTATION_MODE = "rotation";
-    const { config: configRotation } = await import(`../src/config?t=${Date.now()}_4`);
+    const configRotation = parseConfig({ GEMINI_API_KEY: "test-key", ROTATION_MODE: "rotation" });
     expect(configRotation.rotationMode).toBe("rotation");
 
-    process.env.ROTATION_MODE = "default";
-    const { config: configDefaultExplicit } = await import(`../src/config?t=${Date.now()}_5`);
+    const configDefaultExplicit = parseConfig({ GEMINI_API_KEY: "test-key", ROTATION_MODE: "default" });
     expect(configDefaultExplicit.rotationMode).toBe("default");
-
-    delete process.env.ROTATION_MODE;
-    const { config: configDefaultExplicit2 } = await import(`../src/config?t=${Date.now()}_6`);
-    expect(configDefaultExplicit2.rotationMode).toBe("default");
   });
 });

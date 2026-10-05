@@ -107,6 +107,7 @@ export async function handleRequest(req: Request): Promise<Response> {
         model: requestedModel,
         system,
         tools: anthropicTools,
+        messages,
       });
 
       const { response: geminiResponse, model: actualModel } = await rotationManager.executeWithRotation(

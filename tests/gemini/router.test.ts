@@ -72,7 +72,10 @@ describe("routeRequest", () => {
       expect(
         routeRequest({
           model: "gemini-3.6-flash",
-          system: ["Some prefix", "subagent-driven-development in progress"],
+          system: [
+            { text: "Some prefix" },
+            { text: "subagent-driven-development in progress" },
+          ],
         })
       ).toBe("haiku");
     });
@@ -132,6 +135,52 @@ describe("routeRequest", () => {
         routeRequest({
           model: "gemini-3.6-flash",
           system: "subagent-driven-development",
+          tools: [{ name: "Write" }],
+        })
+      ).toBe("haiku");
+    });
+  });
+
+  describe("planning context protection", () => {
+    it("does not downgrade Plan / Software Architect requests to Haiku even with read-only tools", () => {
+      expect(
+        routeRequest({
+          model: "gemini-3.6-flash",
+          system: "You are a software architect agent for designing implementation plans.",
+          tools: [{ name: "Read" }, { name: "Grep" }],
+        })
+      ).toBe("opus");
+
+      expect(
+        routeRequest({
+          model: "gemini-3.6-flash",
+          system: "You are the Plan agent. Design the architecture.",
+          tools: [{ name: "Read" }],
+        })
+      ).toBe("opus");
+
+      expect(
+        routeRequest({
+          model: "gemini-3.6-flash",
+          system: "General session instructions",
+          messages: [{ role: "user", content: "Using superpowers:writing-plans to design the architecture" }],
+          tools: [{ name: "Read" }],
+        })
+      ).toBe("opus");
+    });
+  });
+
+  describe("message content pattern matching", () => {
+    it("routes subagent instructions in message content to haiku", () => {
+      expect(
+        routeRequest({
+          model: "gemini-3.6-flash",
+          messages: [
+            {
+              role: "user",
+              content: "You are an implementer subagent executing subagent-driven-development tasks.",
+            },
+          ],
           tools: [{ name: "Write" }],
         })
       ).toBe("haiku");

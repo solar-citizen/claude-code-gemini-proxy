@@ -4,14 +4,15 @@
 
 **Goal:** Implement Approach B (Subagent-Aware Dynamic Model Routing) within `claude-code-gemini-proxy` to automatically route simple subagent tasks (e.g. Explore agents, implementation subagents) to the Haiku tier, while retaining the high-level planning/brainstorming sessions in the Opus/Sonnet tiers.
 
-**Architecture:** We will introduce a `src/gemini/router.ts` file containing a robust request routing classifier. The proxy's main request handler (`src/main.ts`) will invoke this classifier, passing the request's model, system instructions, and available tools. If the request matches configurable routing heuristics or system patterns, the router downgrades/upgrades the execution tier dynamically.
+**Architecture:** We introduce `src/gemini/router.ts` containing a request routing classifier. The proxy's main request handler (`src/main.ts`) invokes this classifier, passing the request's model, system instructions, tools, and messages. The router preserves Opus for planning/architectural context, while routing Explore agents, read-only search operations, and implementation subagents to the Haiku tier.
 
 **Tech Stack:** TypeScript, Bun Test
 
 ## Global Constraints
-- Target Node/Bun versions: Latest stable Bun (already tested & passing).
+- Target Node/Bun versions: Bun 1.3+
 - Configuration keys: `ENABLE_AUTO_SUBAGENT_ROUTING`, `HAIKU_SUBAGENT_PATTERNS`, `FORCE_HAIKU_TOOLS`.
 - No placeholders: All step code blocks must be complete and syntactically correct.
+- Strict Type Safety: Use explicit types for Anthropic system blocks, tools, and message contents instead of `any`.
 
 ---
 
@@ -20,76 +21,107 @@
 **Files:**
 - Modify: `src/config.ts`
 - Modify: `.env.example`
+- Test: `tests/config.test.ts`
 
 **Interfaces:**
 - Consumes: Nothing
-- Produces: `config.enableAutoSubagentRouting`, `config.haikuSubagentPatterns`, `config.forceHaikuTools` properties inside the imported `config` object.
+- Produces: `export function parseConfig(env?: Record<string, string | undefined>)` and `config` object with `enableAutoSubagentRouting`, `haikuSubagentPatterns`, `forceHaikuTools`.
 
-- [ ] **Step 1: Write a test verifying that config parses routing environment variables**
-Create/Modify tests in `tests/config.test.ts` to expect routing parameters.
+- [ ] **Step 1: Write tests verifying config parsing with default and custom environment variables**
 
 ```typescript
-// Add to tests/config.test.ts
-import { config } from "../src/config";
+// tests/config.test.ts
+import { describe, it, expect } from "bun:test";
+import { parseConfig } from "../src/config";
 
-describe("Routing Config Parsing", () => {
-  it("parses routing parameters correctly with defaults", () => {
+describe("Config Parsing", () => {
+  it("parses environment variables correctly with defaults", () => {
+    const fakeEnv = {
+      GEMINI_API_KEY: "test-gemini-key-1",
+    };
+
+    const config = parseConfig(fakeEnv);
+
+    expect(config.geminiApiKey).toBe("test-gemini-key-1");
+    expect(config.defaultGeminiModel).toBe("gemini-3.5-flash-lite");
+    expect(config.port).toBe(8787);
+    expect(config.logLevel).toBe(1);
     expect(config.enableAutoSubagentRouting).toBe(true);
     expect(config.haikuSubagentPatterns).toEqual([
       "read-only search agent",
       "subagent-driven-development",
-      "implementation plan step"
+      "implementation plan step",
+      "explore agent",
     ]);
+    expect(config.forceHaikuTools).toEqual(["Grep", "Glob", "Read"]);
+  });
+
+  it("parses custom environment variables correctly", () => {
+    const fakeEnv = {
+      GEMINI_API_KEY: "custom-key-2",
+      DEFAULT_GEMINI_MODEL: "gemini-pro",
+      PORT: "3000",
+      LOG_LEVEL: "3",
+      ENABLE_AUTO_SUBAGENT_ROUTING: "false",
+      HAIKU_SUBAGENT_PATTERNS: "test-pattern-1, test-pattern-2",
+      FORCE_HAIKU_TOOLS: "TestTool1, TestTool2",
+    };
+
+    const config = parseConfig(fakeEnv);
+
+    expect(config.geminiApiKey).toBe("custom-key-2");
+    expect(config.defaultGeminiModel).toBe("gemini-pro");
+    expect(config.port).toBe(3000);
+    expect(config.logLevel).toBe(3);
+    expect(config.enableAutoSubagentRouting).toBe(false);
+    expect(config.haikuSubagentPatterns).toEqual(["test-pattern-1", "test-pattern-2"]);
+    expect(config.forceHaikuTools).toEqual(["TestTool1", "TestTool2"]);
   });
 });
 ```
 
 - [ ] **Step 2: Run tests to verify failure**
 Run: `bun test tests/config.test.ts`
-Expected: FAIL due to missing config properties on the `config` object.
+Expected: FAIL due to missing config properties / `parseConfig` export.
 
 - [ ] **Step 3: Update `src/config.ts` and `.env.example`**
-Add the new settings with sensible defaults.
+Refactor helper functions in `src/config.ts` to accept `env` object and export `parseConfig`:
 
 ```typescript
-// Inside src/config.ts
-// Add parsing helper
-function parseBoolean(envVar: string, defaultValue: boolean): boolean {
-  const value = process.env[envVar]?.toLowerCase().trim();
+function parseBoolean(env: Record<string, string | undefined>, envVar: string, defaultValue: boolean): boolean {
+  const value = env[envVar]?.toLowerCase().trim();
   if (value === "true" || value === "1") return true;
   if (value === "false" || value === "0") return false;
   return defaultValue;
 }
 
-// Inside parseConfig() in src/config.ts, add properties:
-const enableAutoSubagentRouting = parseBoolean("ENABLE_AUTO_SUBAGENT_ROUTING", true);
-const haikuSubagentPatterns = parseModelList("HAIKU_SUBAGENT_PATTERNS", [
-  "read-only search agent",
-  "subagent-driven-development",
-  "implementation plan step",
-  "explore agent"
-]);
-const forceHaikuTools = parseModelList("FORCE_HAIKU_TOOLS", [
-  "Grep",
-  "Glob",
-  "Read"
-]);
+export function parseConfig(env: Record<string, string | undefined> = process.env) {
+  const geminiApiKeys = parseApiKeys(env);
+  const defaultGeminiModel = env.DEFAULT_GEMINI_MODEL ?? "gemini-3.5-flash-lite";
 
-// Return from parseConfig:
-return {
-  // ... existing config properties ...
-  enableAutoSubagentRouting,
-  haikuSubagentPatterns,
-  forceHaikuTools,
-};
-```
+  return {
+    geminiApiKeys,
+    geminiApiKey: geminiApiKeys[0],
+    defaultGeminiModel,
+    port: Number(env.PORT ?? 8787),
+    logLevel: parseInt(env.LOG_LEVEL ?? "1", 10),
+    haikuModels: parseModelList(env, "HAIKU_MODELS", [defaultGeminiModel]),
+    sonnetModels: parseModelList(env, "SONNET_MODELS", [defaultGeminiModel]),
+    opusModels: parseModelList(env, "OPUS_MODELS", [defaultGeminiModel]),
+    rotationCooldownSeconds: Number(env.ROTATION_COOLDOWN_SECONDS ?? 60),
+    rotationMode: parseRotationMode(env),
+    enableAutoSubagentRouting: parseBoolean(env, "ENABLE_AUTO_SUBAGENT_ROUTING", true),
+    haikuSubagentPatterns: parseModelList(env, "HAIKU_SUBAGENT_PATTERNS", [
+      "read-only search agent",
+      "subagent-driven-development",
+      "implementation plan step",
+      "explore agent",
+    ]),
+    forceHaikuTools: parseModelList(env, "FORCE_HAIKU_TOOLS", ["Grep", "Glob", "Read"]),
+  };
+}
 
-Update `.env.example` with the new variables:
-```ini
-# Auto Dynamic Model Routing
-ENABLE_AUTO_SUBAGENT_ROUTING=true
-HAIKU_SUBAGENT_PATTERNS=read-only search agent,subagent-driven-development,implementation plan step,explore agent
-FORCE_HAIKU_TOOLS=Grep,Glob,Read
+export const config = parseConfig();
 ```
 
 - [ ] **Step 4: Run tests to verify success**
@@ -108,41 +140,42 @@ git commit -m "feat: add config parameters for dynamic model routing"
 
 **Files:**
 - Create: `src/gemini/router.ts`
+- Test: `tests/gemini/router.test.ts`
 
 **Interfaces:**
-- Consumes: `config.ts` (routing rules)
-- Produces: `routeRequest(params: { model?: string; system?: any; tools?: any[] }): Tier`
+- Consumes: `config.ts`, `detectTier` from `src/gemini/tier.ts`
+- Produces: `routeRequest(params: RoutingParams): Tier`
 
 - [ ] **Step 1: Write unit tests for the routing engine**
-Create `tests/gemini/router.test.ts` to verify classification decisions.
+Create `tests/gemini/router.test.ts`:
 
 ```typescript
 import { routeRequest } from "../../src/gemini/router";
 
-describe("Dynamic Routing Engine", () => {
-  it("routes main planning requests to Opus/Sonnet based on model", () => {
+describe("routeRequest", () => {
+  it("preserves Opus tier for planning/architecture agents even with read tools", () => {
     const tier = routeRequest({
-      model: "claude-opus-5-5",
-      system: "You are a software architect planning a feature.",
-      tools: [{ name: "Edit" }, { name: "Write" }]
+      model: "gemini-3.6-flash",
+      system: "You are a software architect agent for designing implementation plans.",
+      tools: [{ name: "Read" }, { name: "Grep" }],
     });
     expect(tier).toBe("opus");
   });
 
   it("routes Explore / Read-Only subagents to Haiku", () => {
     const tier = routeRequest({
-      model: "claude-opus-5-5", // requested as Opus but matched as Explore agent
-      system: "You are a Read-only search agent analyzing codebase structure.",
-      tools: [{ name: "Grep" }, { name: "Read" }]
+      model: "gemini-3.6-flash",
+      system: "You are a read-only search agent for broad fan-out searches.",
+      tools: [{ name: "Grep" }, { name: "Read" }],
     });
     expect(tier).toBe("haiku");
   });
 
-  it("routes implementation subagents to Haiku based on system instructions", () => {
+  it("routes implementation subagents from messages to Haiku", () => {
     const tier = routeRequest({
-      model: "claude-opus-5-5",
-      system: "Executing subagent-driven-development plan steps.",
-      tools: [{ name: "Edit" }, { name: "Write" }]
+      model: "gemini-3.6-flash",
+      messages: [{ role: "user", content: "Executing subagent-driven-development tasks." }],
+      tools: [{ name: "Write" }, { name: "Edit" }],
     });
     expect(tier).toBe("haiku");
   });
@@ -151,58 +184,70 @@ describe("Dynamic Routing Engine", () => {
 
 - [ ] **Step 2: Run tests to verify failure**
 Run: `bun test tests/gemini/router.test.ts`
-Expected: FAIL (Cannot find module `src/gemini/router`)
+Expected: FAIL (Module not found)
 
 - [ ] **Step 3: Implement `src/gemini/router.ts`**
-Write the classifier code utilizing system prompts, tools, and config properties.
+Implement the router with strongly typed interfaces and planning protection:
 
 ```typescript
 import { config } from "../config";
 import { detectTier } from "./tier";
 import type { Tier } from "./rotation";
 
-export interface RoutingParams {
-  model?: string;
-  system?: any; // String or Array of System Blocks
-  tools?: any[];
+export interface AnthropicSystemBlock {
+  type?: string;
+  text?: string;
 }
 
-export function routeRequest({ model, system, tools }: RoutingParams): Tier {
+export interface AnthropicToolLike {
+  name?: string;
+  description?: string;
+}
+
+export interface AnthropicMessageContentBlock {
+  type?: string;
+  text?: string;
+}
+
+export interface AnthropicMessageLike {
+  role?: string;
+  content?: string | AnthropicMessageContentBlock[];
+}
+
+export interface RoutingParams {
+  model?: string;
+  system?: string | AnthropicSystemBlock[];
+  tools?: AnthropicToolLike[];
+  messages?: AnthropicMessageLike[];
+}
+
+export function routeRequest({ model, system, tools, messages }: RoutingParams): Tier {
   const defaultTier = detectTier(model);
 
   if (!config.enableAutoSubagentRouting) {
     return defaultTier;
   }
 
-  // 1. Extract plain-text system prompt
-  let systemText = "";
-  if (typeof system === "string") {
-    systemText = system.toLowerCase();
-  } else if (Array.isArray(system)) {
-    systemText = system
-      .map((block: any) => (typeof block === "string" ? block : block?.text ?? ""))
-      .join("\n")
-      .toLowerCase();
+  const systemText = typeof system === "string" ? system.toLowerCase() : Array.isArray(system) ? system.map(b => (typeof b === "string" ? b : b?.text ?? "")).join("\n").toLowerCase() : "";
+  const messagesText = Array.isArray(messages) ? messages.map(m => typeof m.content === "string" ? m.content : Array.isArray(m.content) ? m.content.map(b => b?.text ?? "").join("\n") : "").join("\n").toLowerCase() : "";
+  const combinedText = `${systemText}\n${messagesText}`;
+
+  // 1. Preserve planning/architectural context
+  const isPlanning = systemText.includes("software architect") || systemText.includes("plan agent") || combinedText.includes("superpowers:writing-plans") || combinedText.includes("superpowers:brainstorming");
+  if (isPlanning) {
+    return defaultTier;
   }
 
-  // 2. Check for system prompt pattern match (Haiku routing)
-  const isHaikuSubagent = config.haikuSubagentPatterns.some((pattern) =>
-    systemText.includes(pattern.toLowerCase())
-  );
-
-  if (isHaikuSubagent) {
+  // 2. Route matching subagent patterns to Haiku
+  const isHaikuPattern = config.haikuSubagentPatterns.some(p => combinedText.includes(p.toLowerCase()));
+  if (isHaikuPattern) {
     return "haiku";
   }
 
-  // 3. Check for tool-based pattern match
-  // If the agent only has read-only/search tools, route to Haiku
-  const toolNames = (tools || []).map((t: any) => t?.name || "");
-  const hasWriteTools = toolNames.some((name) =>
-    ["Write", "Edit", "NotebookEdit"].includes(name)
-  );
-  const hasHaikuTools = toolNames.some((name) =>
-    config.forceHaikuTools.map(t => t.toLowerCase()).includes(name.toLowerCase())
-  );
+  // 3. Tool-based heuristic
+  const toolNames = (tools || []).map(t => t?.name || "");
+  const hasWriteTools = toolNames.some(name => ["Write", "Edit", "NotebookEdit"].includes(name));
+  const hasHaikuTools = toolNames.some(name => config.forceHaikuTools.map(t => t.toLowerCase()).includes(name.toLowerCase()));
 
   if (hasHaikuTools && !hasWriteTools) {
     return "haiku";
@@ -228,59 +273,71 @@ git commit -m "feat: implement subagent-aware dynamic routing engine"
 
 **Files:**
 - Modify: `src/main.ts`
+- Test: `tests/proxy.test.ts`
 
 **Interfaces:**
 - Consumes: `routeRequest` from `src/gemini/router.ts`
-- Produces: Correct model tier dynamic mapping for downstream Gemini upstream execution.
+- Produces: Updated `/v1/messages` request handler passing `model`, `system`, `anthropicTools`, and `messages` into `routeRequest`.
 
-- [ ] **Step 1: Write dynamic routing integration tests in `tests/proxy.test.ts`**
-Add an integration test to verify that system messages triggering subagent rules resolve to the Haiku model even if "opus" was requested.
-
-```typescript
-// Add this helper/test inside tests/proxy.test.ts (or in a test case)
-// We want to verify that when a subagent system message is provided, 
-// the proxy logs or resolves correctly. Since we test handleRequest end-to-end,
-// let's mock or verify the model field returned matches the mapped model.
-```
-
-- [ ] **Step 2: Run tests to verify failure**
-Run: `bun test tests/proxy.test.ts`
-Expected: PASS/FAIL depending on current implementation, but we want to make sure we don't break existing tests.
-
-- [ ] **Step 3: Modify `src/main.ts`**
-Import `routeRequest` and replace `detectTier` with `routeRequest`.
+- [ ] **Step 1: Add integration test verifying subagent routing in `tests/proxy.test.ts`**
 
 ```typescript
-// At the top of src/main.ts:
-import { routeRequest } from "./gemini/router";
+it("dynamically routes subagent requests to haiku tier", async () => {
+  let executedTier: string | undefined;
+  const spy = spyOn(rotationManager, "executeWithRotation").mockImplementation(
+    async (tier, execute) => {
+      executedTier = tier;
+      return {
+        response: new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: "ok" }] } }] }), { status: 200 }),
+        model: "gemini-3.5-flash-lite",
+      };
+    }
+  );
 
-// In handleRequest of src/main.ts, modify line 106:
-// Old: const tier = detectTier(requestedModel);
-// New:
-const tier = routeRequest({
-  model: requestedModel,
-  system,
-  tools,
+  try {
+    const req = new Request("http://localhost:8787/v1/messages", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "gemini-3.6-flash", // Opus tier model requested
+        system: "You are a read-only search agent.",
+        messages: [{ role: "user", content: "Find files" }],
+      }),
+    });
+
+    const res = await handleRequest(req);
+    expect(res.status).toBe(200);
+    expect(executedTier).toBe("haiku");
+  } finally {
+    spy.mockRestore();
+  }
 });
 ```
 
+- [ ] **Step 2: Run tests to verify integration**
+Run: `bun test tests/proxy.test.ts`
+Expected: PASS with full mock verification.
+
+- [ ] **Step 3: Modify `src/main.ts`**
+Import `routeRequest` and replace `detectTier` with `routeRequest({ model: requestedModel, system, tools: anthropicTools, messages })`.
+
 - [ ] **Step 4: Run all tests to ensure no regressions**
 Run: `bun test`
-Expected: PASS (All tests passing)
+Expected: PASS across all test files.
 
 - [ ] **Step 5: Commit**
 ```bash
-git add src/main.ts
+git add src/main.ts tests/proxy.test.ts
 git commit -m "feat: integrate subagent-aware model router into main request flow"
 ```
 
 ---
 
-### Task 4: Integration & Manual End-to-End Verification
+### Task 4: Integration & Verification
 
-- [ ] **Step 1: Perform manual verification**
-Verify the proxy dynamically routes requests by checking logs/console output with different simulated requests.
-- [ ] **Step 2: Commit any final cleanup or log enhancements**
-```bash
-git commit --allow-empty -m "chore: dynamic model routing verified successfully"
-```
+- [ ] **Step 1: Perform full verification**
+Run `npx tsc --noEmit && bun test`
+Expected: 0 errors, 100% tests passing.
+
+- [ ] **Step 2: Documentation update**
+Update `README.MD` with details on subagent dynamic routing and configuration.
