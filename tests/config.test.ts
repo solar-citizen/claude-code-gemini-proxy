@@ -17,6 +17,9 @@ describe("Config", () => {
     delete process.env.DEFAULT_GEMINI_MODEL;
     delete process.env.PORT;
     delete process.env.LOG_LEVEL;
+    delete process.env.ENABLE_AUTO_SUBAGENT_ROUTING;
+    delete process.env.HAIKU_SUBAGENT_PATTERNS;
+    delete process.env.FORCE_HAIKU_TOOLS;
 
     const { config } = await import(`../src/config?t=${Date.now()}_1`);
 
@@ -24,6 +27,14 @@ describe("Config", () => {
     expect(config.defaultGeminiModel).toBe("gemini-3.5-flash-lite");
     expect(config.port).toBe(8787);
     expect(config.logLevel).toBe(1);
+    expect(config.enableAutoSubagentRouting).toBe(true);
+    expect(config.haikuSubagentPatterns).toEqual([
+      "read-only search agent",
+      "subagent-driven-development",
+      "implementation plan step",
+      "explore agent",
+    ]);
+    expect(config.forceHaikuTools).toEqual(["Grep", "Glob", "Read"]);
   });
 
   it("parses custom environment variables correctly", async () => {
@@ -32,6 +43,9 @@ describe("Config", () => {
     process.env.DEFAULT_GEMINI_MODEL = "gemini-pro";
     process.env.PORT = "3000";
     process.env.LOG_LEVEL = "3";
+    process.env.ENABLE_AUTO_SUBAGENT_ROUTING = "false";
+    process.env.HAIKU_SUBAGENT_PATTERNS = "test-pattern-1, test-pattern-2";
+    process.env.FORCE_HAIKU_TOOLS = "TestTool1, TestTool2";
 
     const { config } = await import(`../src/config?t=${Date.now()}_2`);
 
@@ -39,6 +53,9 @@ describe("Config", () => {
     expect(config.defaultGeminiModel).toBe("gemini-pro");
     expect(config.port).toBe(3000);
     expect(config.logLevel).toBe(3);
+    expect(config.enableAutoSubagentRouting).toBe(false);
+    expect(config.haikuSubagentPatterns).toEqual(["test-pattern-1", "test-pattern-2"]);
+    expect(config.forceHaikuTools).toEqual(["TestTool1", "TestTool2"]);
   });
 
   it("parses ROTATION_MODE correctly with defaults and custom values", async () => {

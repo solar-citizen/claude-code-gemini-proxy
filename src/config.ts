@@ -34,6 +34,13 @@ function parseModelList(envVar: string, fallback: string[]): string[] {
   return models.length > 0 ? models : fallback;
 }
 
+function parseBoolean(envVar: string, defaultValue: boolean): boolean {
+  const value = process.env[envVar]?.toLowerCase().trim();
+  if (value === "true" || value === "1") return true;
+  if (value === "false" || value === "0") return false;
+  return defaultValue;
+}
+
 export type RotationMode = "default" | "rotation";
 
 function parseRotationMode(): RotationMode {
@@ -77,6 +84,9 @@ function parseConfig() {
       process.env.ROTATION_COOLDOWN_SECONDS ?? 60,
     ),
     rotationMode: parseRotationMode(),
+    enableAutoSubagentRouting: parseBoolean("ENABLE_AUTO_SUBAGENT_ROUTING", true),
+    haikuSubagentPatterns: parseModelList("HAIKU_SUBAGENT_PATTERNS", ["read-only search agent", "subagent-driven-development", "implementation plan step", "explore agent"]),
+    forceHaikuTools: parseModelList("FORCE_HAIKU_TOOLS", ["Grep", "Glob", "Read"]),
   };
 }
 
