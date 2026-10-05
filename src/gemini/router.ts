@@ -2,27 +2,27 @@ import { config } from "../config";
 import { detectTier } from "./tier";
 import type { Tier } from "./rotation";
 
-export interface AnthropicSystemBlock {
+export type AnthropicSystemBlock = {
   type?: string;
   text?: string;
 }
 
-export interface AnthropicToolLike {
+export type AnthropicToolLike = {
   name?: string;
   description?: string;
 }
 
-export interface AnthropicMessageContentBlock {
+export type AnthropicMessageContentBlock = {
   type?: string;
   text?: string;
 }
 
-export interface AnthropicMessageLike {
+export type AnthropicMessageLike = {
   role?: string;
   content?: string | AnthropicMessageContentBlock[];
 }
 
-export interface RoutingParams {
+export type RoutingParams = {
   model?: string;
   system?: string | AnthropicSystemBlock[];
   tools?: AnthropicToolLike[];
@@ -33,12 +33,14 @@ function extractSystemText(system?: string | AnthropicSystemBlock[]): string {
   if (typeof system === "string") {
     return system.toLowerCase();
   }
+
   if (Array.isArray(system)) {
     return system
       .map((block) => (typeof block === "string" ? block : block?.text ?? ""))
       .join("\n")
       .toLowerCase();
   }
+
   return "";
 }
 
@@ -46,14 +48,17 @@ function extractMessagesText(messages?: AnthropicMessageLike[]): string {
   if (!Array.isArray(messages)) {
     return "";
   }
+
   return messages
-    .map((msg) => {
-      if (typeof msg.content === "string") {
-        return msg.content;
+    .map(({ content }) => {
+      if (typeof content === "string") {
+        return content;
       }
-      if (Array.isArray(msg.content)) {
-        return msg.content.map((b) => b?.text ?? "").join("\n");
+
+      if (Array.isArray(content)) {
+        return content.map((b) => b?.text ?? "").join("\n");
       }
+
       return "";
     })
     .join("\n")
