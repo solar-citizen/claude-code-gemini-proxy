@@ -7,7 +7,7 @@ import { callGeminiRaw } from "./gemini/client";
 import { getErrorMessage } from "./utils/error.util";
 import { log, debugLog, getLogFilePath } from "./utils/logger.util";
 import { rotationManager } from "./gemini/rotation-instance";
-import { detectTier } from "./gemini/tier";
+import { routeRequest } from "./gemini/router";
 import { AllCombinationsExhaustedError, GeminiUpstreamError } from "./gemini/rotation";
 import { timeoutMs } from "./utils/common.util";
 
@@ -103,7 +103,11 @@ export async function handleRequest(req: Request): Promise<Response> {
         ...(tools ? { tools } : {}),
       };
 
-      const tier = detectTier(requestedModel);
+      const tier = routeRequest({
+        model: requestedModel,
+        system,
+        tools: anthropicTools,
+      });
 
       const { response: geminiResponse, model: actualModel } = await rotationManager.executeWithRotation(
         tier,
