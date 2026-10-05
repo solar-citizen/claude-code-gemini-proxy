@@ -36,8 +36,15 @@ function parseModelList(envVar: string, fallback: string[]): string[] {
 
 function parseBoolean(envVar: string, defaultValue: boolean): boolean {
   const value = process.env[envVar]?.toLowerCase().trim();
-  if (value === "true" || value === "1") return true;
-  if (value === "false" || value === "0") return false;
+  
+  if (value === "true" || value === "1") {
+    return true;
+  }
+
+  if (value === "false" || value === "0") {
+    return false;
+  }
+
   return defaultValue;
 }
 
