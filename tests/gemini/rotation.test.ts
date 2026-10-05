@@ -7,7 +7,7 @@ import {
   keyFingerprint,
   isRetryableStatus,
 } from "../../src/gemini/rotation";
-import type { Tier, Combination, RotationConfig } from "../../src/gemini/rotation";
+import type { Combination, RotationConfig } from "../../src/gemini/rotation";
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
