@@ -1,5 +1,7 @@
 import { config } from "../src/config";
 import { handleRequest } from "../src/main";
+import { rotationManager } from "../src/gemini/rotation-instance";
+import { describe, it, expect, spyOn } from "bun:test";
 
 type ErrorResponse = {
   type: "error";
@@ -111,5 +113,92 @@ describe("Proxy Server Integration", () => {
 
     const res = await handleRequest(req);
     expect(res.status).toBe(404);
+  });
+
+  it("routes request with subagent system prompt to haiku tier in /v1/messages", async () => {
+    let capturedTier: string | undefined;
+    const spy = spyOn(rotationManager, "executeWithRotation").mockImplementation(async (tier, _fn) => {
+      capturedTier = tier;
+      return {
+        response: new Response(
+          JSON.stringify({
+            candidates: [
+              {
+                content: {
+                  parts: [{ text: "Hello from mock gemini" }],
+                },
+              },
+            ],
+            usageMetadata: {
+              promptTokenCount: 15,
+              candidatesTokenCount: 10,
+            },
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        ),
+        model: "gemini-2.5-flash",
+      };
+    });
+
+    try {
+      const req = new Request("http://localhost:8787/v1/messages", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          model: "claude-3-5-sonnet-20241022",
+          system: "You are a read-only search agent for broad fan-out searches.",
+          messages: [{ role: "user", content: "Find files" }],
+        }),
+      });
+
+      const res = await handleRequest(req);
+      expect(res.status).toBe(200);
+      expect(capturedTier).toBe("haiku");
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("routes standard request to default model tier in /v1/messages", async () => {
+    let capturedTier: string | undefined;
+    const spy = spyOn(rotationManager, "executeWithRotation").mockImplementation(async (tier, _fn) => {
+      capturedTier = tier;
+      return {
+        response: new Response(
+          JSON.stringify({
+            candidates: [
+              {
+                content: {
+                  parts: [{ text: "Hello from mock gemini" }],
+                },
+              },
+            ],
+            usageMetadata: {
+              promptTokenCount: 15,
+              candidatesTokenCount: 10,
+            },
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        ),
+        model: "gemini-2.5-flash",
+      };
+    });
+
+    try {
+      const req = new Request("http://localhost:8787/v1/messages", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          model: "claude-3-5-sonnet-20241022",
+          messages: [{ role: "user", content: "Hello" }],
+        }),
+      });
+
+      const res = await handleRequest(req);
+      expect(res.status).toBe(200);
+      expect(capturedTier).toBe("sonnet");
+    } finally {
+      spy.mockRestore();
+    }
   });
 });
