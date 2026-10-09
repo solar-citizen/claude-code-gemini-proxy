@@ -10,7 +10,7 @@ import { rotationManager } from "./gemini/rotation-instance";
 import { routeRequest } from "./gemini/router";
 import { AllCombinationsExhaustedError, GeminiUpstreamError } from "./gemini/rotation";
 import { timeoutMs } from "./utils/common.util";
-import { extractEffort, mapEffortToThinkingConfig, calculateMaxOutputTokens } from "./gemini/effort";
+import { extractEffort, mapEffortToThinkingConfig, calculateMaxOutputTokens, formatResponseModel } from "./gemini/effort";
 
 export async function handleRequest(req: Request): Promise<Response> {
   const start = Date.now();
@@ -124,6 +124,8 @@ export async function handleRequest(req: Request): Promise<Response> {
         (apiKey, geminiModel) => callGeminiRaw(geminiBody, geminiModel, timeoutMs, apiKey),
       );
 
+      const responseModel = formatResponseModel(actualModel, effort);
+
       const geminiRes: unknown = await geminiResponse.json();
       debugLog("gemini response", geminiRes);
 
@@ -152,7 +154,7 @@ export async function handleRequest(req: Request): Promise<Response> {
       log("info", `${method} ${pathname} -> ${stopReason}`, {
         ms: Date.now() - start,
         tier,
-        model: actualModel,
+        model: responseModel,
         usage,
         toolCalls: blocks.filter((block): block is Extract<AnthropicOutputBlock, { type: "tool_use" }> => {
           return block.type === "tool_use";
@@ -160,7 +162,7 @@ export async function handleRequest(req: Request): Promise<Response> {
       });
 
       if (stream) {
-        return new Response(buildSseStream(blocks, stopReason, actualModel, usage), {
+        return new Response(buildSseStream(blocks, stopReason, responseModel, usage), {
           headers: { "content-type": "text/event-stream; charset=utf-8", "cache-control": "no-cache", connection: "keep-alive" },
         });
       }
@@ -170,7 +172,7 @@ export async function handleRequest(req: Request): Promise<Response> {
         type: "message",
         role: "assistant",
         content: blocks,
-        model: actualModel,
+        model: responseModel,
         stop_reason: stopReason,
         stop_sequence: null,
         usage: {

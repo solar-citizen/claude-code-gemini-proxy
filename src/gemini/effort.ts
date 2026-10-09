@@ -40,3 +40,8 @@ export function calculateMaxOutputTokens(
   const requested = maxTokens ?? 4096;
   return thinkingBudget ? thinkingBudget + requested : requested;
 }
+
+export function formatResponseModel(model: string, effort?: string): string {
+  if (!effort) return model;
+  return `${model} (effort: ${effort})`;
+}
