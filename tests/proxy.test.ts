@@ -201,4 +201,44 @@ describe("Proxy Server Integration", () => {
       spy.mockRestore();
     }
   });
+
+  it("passes thinkingConfig and adjusted maxOutputTokens when output_config.effort is set", async () => {
+    let capturedRequestBody: GeminiRequestBody | undefined;
+
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      if (url.includes("generativelanguage.googleapis.com")) {
+        capturedRequestBody = JSON.parse(init?.body as string) as GeminiRequestBody;
+        return new Response(
+          JSON.stringify({
+            candidates: [{ content: { parts: [{ text: "ok" }] } }],
+            usageMetadata: { promptTokenCount: 5, candidatesTokenCount: 3 },
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      return originalFetch(input, init);
+    };
+
+    try {
+      const req = new Request("http://localhost:8787/v1/messages", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          messages: [{ role: "user", content: "Think hard" }],
+          max_tokens: 2000,
+          output_config: { effort: "high" },
+        }),
+      });
+
+      const res = await handleRequest(req);
+      expect(res.status).toBe(200);
+      expect(capturedRequestBody?.generationConfig.thinkingConfig).toEqual({ thinkingBudget: 8192 });
+      expect(capturedRequestBody?.generationConfig.maxOutputTokens).toBe(8192 + 2000);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
 });
+

@@ -10,6 +10,7 @@ import { rotationManager } from "./gemini/rotation-instance";
 import { routeRequest } from "./gemini/router";
 import { AllCombinationsExhaustedError, GeminiUpstreamError } from "./gemini/rotation";
 import { timeoutMs } from "./utils/common.util";
+import { extractEffort, mapEffortToThinkingConfig, calculateMaxOutputTokens } from "./gemini/effort";
 
 export async function handleRequest(req: Request): Promise<Response> {
   const start = Date.now();
@@ -82,13 +83,21 @@ export async function handleRequest(req: Request): Promise<Response> {
     const { messages, system, tools: anthropicTools, max_tokens, temperature, stream, model } = body;
     const requestedModel = model?.trim() || config.defaultGeminiModel;
 
-      const generationConfig: GeminiGenerationConfig = {
-        maxOutputTokens: max_tokens ?? 4096,
-      };
+    const effort = extractEffort(body);
+    const thinkingConfig = mapEffortToThinkingConfig(effort);
+    const thinkingBudget = thinkingConfig?.thinkingBudget;
 
-      if (temperature != null) {
-        generationConfig.temperature = temperature;
-      }
+    const generationConfig: GeminiGenerationConfig = {
+      maxOutputTokens: calculateMaxOutputTokens(max_tokens, thinkingBudget),
+    };
+
+    if (thinkingConfig) {
+      generationConfig.thinkingConfig = thinkingConfig;
+    }
+
+    if (temperature != null) {
+      generationConfig.temperature = temperature;
+    }
 
       const tools = anthropicToolsToGemini(anthropicTools);
 
