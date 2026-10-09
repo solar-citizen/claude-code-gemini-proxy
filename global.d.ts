@@ -60,9 +60,14 @@ type AnthropicContentBlock =
   | AnthropicImageBlock
   | AnthropicUnknownBlock;
 
+type AnthropicOutputConfig = {
+  effort?: "low" | "medium" | "high" | "xhigh" | "max" | string;
+};
+
 type AnthropicMessage = {
   role: AnthropicRole;
   content: string | AnthropicContentBlock[];
+  output_config?: AnthropicOutputConfig;
 };
 
 type AnthropicSystemBlock = {
@@ -83,6 +88,7 @@ type AnthropicMessagesRequestBody = {
   temperature?: number;
   stream?: boolean;
   model?: string;
+  output_config?: AnthropicOutputConfig;
 };
 
 // ---------- Gemini shapes (output/input to Gemini) ----------
@@ -139,9 +145,14 @@ type GeminiContent = {
   parts: GeminiPart[];
 };
 
+type GeminiThinkingConfig = {
+  thinkingBudget?: number;
+};
+
 type GeminiGenerationConfig = {
   maxOutputTokens: number;
   temperature?: number;
+  thinkingConfig?: GeminiThinkingConfig;
 };
 
 type GeminiRequestBody = {

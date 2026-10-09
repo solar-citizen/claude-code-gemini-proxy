@@ -10,6 +10,7 @@ import { rotationManager } from "./gemini/rotation-instance";
 import { routeRequest } from "./gemini/router";
 import { AllCombinationsExhaustedError, GeminiUpstreamError } from "./gemini/rotation";
 import { timeoutMs } from "./utils/common.util";
+import { extractEffort, mapEffortToThinkingConfig, calculateMaxOutputTokens, formatResponseModel } from "./gemini/effort";
 
 export async function handleRequest(req: Request): Promise<Response> {
   const start = Date.now();
@@ -82,13 +83,21 @@ export async function handleRequest(req: Request): Promise<Response> {
     const { messages, system, tools: anthropicTools, max_tokens, temperature, stream, model } = body;
     const requestedModel = model?.trim() || config.defaultGeminiModel;
 
-      const generationConfig: GeminiGenerationConfig = {
-        maxOutputTokens: max_tokens ?? 4096,
-      };
+    const effort = extractEffort(body);
+    const thinkingConfig = mapEffortToThinkingConfig(effort);
+    const thinkingBudget = thinkingConfig?.thinkingBudget;
 
-      if (temperature != null) {
-        generationConfig.temperature = temperature;
-      }
+    const generationConfig: GeminiGenerationConfig = {
+      maxOutputTokens: calculateMaxOutputTokens(max_tokens, thinkingBudget),
+    };
+
+    if (thinkingConfig) {
+      generationConfig.thinkingConfig = thinkingConfig;
+    }
+
+    if (temperature != null) {
+      generationConfig.temperature = temperature;
+    }
 
       const tools = anthropicToolsToGemini(anthropicTools);
 
@@ -114,6 +123,8 @@ export async function handleRequest(req: Request): Promise<Response> {
         tier,
         (apiKey, geminiModel) => callGeminiRaw(geminiBody, geminiModel, timeoutMs, apiKey),
       );
+
+      const responseModel = formatResponseModel(actualModel, effort);
 
       const geminiRes: unknown = await geminiResponse.json();
       debugLog("gemini response", geminiRes);
@@ -143,7 +154,7 @@ export async function handleRequest(req: Request): Promise<Response> {
       log("info", `${method} ${pathname} -> ${stopReason}`, {
         ms: Date.now() - start,
         tier,
-        model: actualModel,
+        model: responseModel,
         usage,
         toolCalls: blocks.filter((block): block is Extract<AnthropicOutputBlock, { type: "tool_use" }> => {
           return block.type === "tool_use";
@@ -151,7 +162,7 @@ export async function handleRequest(req: Request): Promise<Response> {
       });
 
       if (stream) {
-        return new Response(buildSseStream(blocks, stopReason, actualModel, usage), {
+        return new Response(buildSseStream(blocks, stopReason, responseModel, usage), {
           headers: { "content-type": "text/event-stream; charset=utf-8", "cache-control": "no-cache", connection: "keep-alive" },
         });
       }
@@ -161,7 +172,7 @@ export async function handleRequest(req: Request): Promise<Response> {
         type: "message",
         role: "assistant",
         content: blocks,
-        model: actualModel,
+        model: responseModel,
         stop_reason: stopReason,
         stop_sequence: null,
         usage: {
