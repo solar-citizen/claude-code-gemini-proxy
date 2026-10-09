@@ -59,6 +59,27 @@ The proxy reads the `model` field on each incoming request and forwards it to th
 
 **Current setup** points opus and sonnet at Gemma 4 31B (stronger on coding/agentic benchmarks) and haiku at Gemini 3.1 Flash-Lite (cheaper, faster, larger context — good for lightweight ops).
 
+### Subagent-Aware Dynamic Routing
+
+When planning and architecture sessions are running in Opus, you can have the proxy automatically delegate lightweight tasks to faster, cheaper Haiku models.
+
+The proxy inspects incoming requests and dynamically routes to the **Haiku tier** when:
+1. **System Prompt Signatures:** The system prompt matches subagent patterns (e.g., `read-only search agent`, `explore agent`, `subagent-driven-development`, or `implementation plan step`).
+2. **Read-Only / Search Tool Execution:** The request only uses read-only search tools (e.g. `Grep`, `Glob`, `Read`) and no file modification tools (`Write`, `Edit`, `NotebookEdit`).
+
+This behavior is enabled by default and can be configured in `.env`:
+
+```env
+# Enable or disable automatic subagent tier routing
+ENABLE_AUTO_SUBAGENT_ROUTING=true
+
+# Comma-separated list of patterns in system prompts to route to Haiku
+HAIKU_SUBAGENT_PATTERNS="read-only search agent,subagent-driven-development,implementation plan step,explore agent"
+
+# Tools that trigger routing to Haiku when no write tools are present
+FORCE_HAIKU_TOOLS="Grep,Glob,Read"
+```
+
 ### Available models
 
 Any model exposed via `generativelanguage.googleapis.com`'s `generateContent` endpoint works, including:
