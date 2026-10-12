@@ -151,7 +151,7 @@ export async function handleRequest(req: Request): Promise<Response> {
         cached_tokens: cachedContentTokenCount ?? 0,
       };
 
-      log("info", `${method} ${pathname} -> ${stopReason}`, {
+      log("info", `${method} ${pathname} -> ${stopReason} [model: ${responseModel}] [tier: ${tier}]`, {
         ms: Date.now() - start,
         tier,
         model: responseModel,

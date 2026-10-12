@@ -276,5 +276,48 @@ describe("Proxy Server Integration", () => {
       globalThis.fetch = originalFetch;
     }
   });
+
+  it("logs completion message with model and tier", async () => {
+    const loggerModule = await import("../src/utils/logger.util");
+    const logSpy = spyOn(loggerModule, "log");
+
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      if (url.includes("generativelanguage.googleapis.com")) {
+        return new Response(
+          JSON.stringify({
+            candidates: [{ content: { parts: [{ text: "ok" }] } }],
+            usageMetadata: { promptTokenCount: 5, candidatesTokenCount: 3 },
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      return originalFetch(input, init);
+    }) as unknown as typeof fetch;
+
+    try {
+      const req = new Request("http://localhost:8787/v1/messages", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          messages: [{ role: "user", content: "Hello" }],
+          output_config: { effort: "high" },
+        }),
+      });
+
+      const res = await handleRequest(req);
+      expect(res.status).toBe(200);
+
+      const completionCall = logSpy.mock.calls.find(
+        (call) => typeof call[1] === "string" && call[1].startsWith("POST /v1/messages ->")
+      );
+      expect(completionCall).toBeDefined();
+      expect(completionCall?.[1]).toMatch(/^POST \/v1\/messages -> \w+ \[model: .+ \(effort: high\)\] \[tier: \w+\]$/);
+    } finally {
+      globalThis.fetch = originalFetch;
+      logSpy.mockRestore();
+    }
+  });
 });
 
