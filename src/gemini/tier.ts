@@ -2,7 +2,10 @@ import type { Tier } from "./rotation";
 import { config } from "../config";
 
 export function stripModelSuffix(model: string): string {
-  return model.replace(/\[.*?\]$/g, "").trim();
+  return model
+    .replace(/\s*\(effort:\s*[^)]+\)/gi, "")
+    .replace(/\[.*?\]$/g, "")
+    .trim();
 }
 
 function buildModelSet(models: readonly string[]): Set<string> {
