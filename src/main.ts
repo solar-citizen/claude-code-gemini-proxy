@@ -1,3 +1,4 @@
+import { handleHarnessRequest } from "./harness";
 import { config } from "./config";
 import { anthropicToolsToGemini, anthropicMessagesToGeminiContents, geminiPartsToAnthropicBlocks } from "./converters";
 import { buildSseStream } from "./anthropic/sse";
@@ -16,6 +17,8 @@ export async function handleRequest(req: Request): Promise<Response> {
   const start = Date.now();
   const { method } = req;
   const { pathname } = new URL(req.url);
+
+  if (pathname === "/harness" || pathname.startsWith("/harness/")) return handleHarnessRequest(req);
 
   try {
     if (pathname === "/v1/models") {
@@ -235,11 +238,10 @@ export async function handleRequest(req: Request): Promise<Response> {
   }
 }
 
+export const serverOptions = { hostname: "127.0.0.1", port: config.port, fetch: handleRequest };
+
 if (import.meta.main) {
-  Bun.serve({
-    port: config.port,
-    fetch: handleRequest,
-  });
+  Bun.serve(serverOptions);
 
   console.log(`Gemini<->Anthropic proxy listening on http://127.0.0.1:${config.port} in ${config.rotationMode} mode`);
 

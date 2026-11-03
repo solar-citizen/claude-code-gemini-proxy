@@ -74,11 +74,21 @@ function parseRotationMode(env: Record<string, string | undefined>): RotationMod
   return "default";
 }
 
+function strictCap(env: Record<string,string|undefined>, name:string):number {
+  const value=Number(env[name]??32000);
+  if(!Number.isSafeInteger(value)||value<1)throw new Error('invalid strict token cap');
+  return value;
+}
+
 export function parseConfig(env: Record<string, string | undefined> = process.env) {
   const geminiApiKeys = parseApiKeys(env);
   const defaultGeminiModel = env.DEFAULT_GEMINI_MODEL ?? "gemini-3.5-flash-lite";
 
   return {
+    harnessStrictEnabled: parseBoolean(env, "HARNESS_STRICT_ENABLED", false),
+    harnessModelVersions: (env.HARNESS_MODEL_VERSIONS??'').split(',').map(v=>v.trim()).filter(Boolean),
+    harnessMaxRequestTokens: strictCap(env, 'HARNESS_MAX_REQUEST_TOKENS'),
+    harnessMaxUpstreamTokens: strictCap(env, 'HARNESS_MAX_UPSTREAM_TOKENS'),
     geminiApiKeys,
     geminiApiKey: geminiApiKeys[0],
     defaultGeminiModel,

@@ -45,3 +45,17 @@ export function formatResponseModel(model: string, effort?: string): string {
   if (!effort) return model;
   return `${model} (effort: ${effort})`;
 }
+
+export function translateHarnessGeneration(request: Record<string,unknown>, policy:{max_request_tokens:number;max_upstream_tokens:number}) {
+  const tokens=request.max_tokens;
+  const thinking=request.thinking, output=request.output_config;
+  const exact=(v:unknown,expected:Record<string,string>)=>v!==null&&typeof v==='object'&&!Array.isArray(v)
+    &&Object.keys(v).length===Object.keys(expected).length
+    &&Object.entries(expected).every(([key,value])=>(v as Record<string,unknown>)[key]===value);
+  if(!Number.isSafeInteger(policy.max_request_tokens)||policy.max_request_tokens<1||!Number.isSafeInteger(policy.max_upstream_tokens)||policy.max_upstream_tokens<1
+    ||typeof tokens!=='number'||!Number.isSafeInteger(tokens)||tokens<1||tokens>policy.max_request_tokens||tokens>policy.max_upstream_tokens
+    ||!exact(thinking,{type:'adaptive',display:'updates'})||!exact(output,{effort:'high'}))throw new Error('unsupported_generation_contract');
+  return {version:'claude-adaptive-high-gemini-high-v1',requested:{max_tokens:tokens,thinking,output_config:output},
+    generationConfig:{maxOutputTokens:tokens,thinkingConfig:{thinkingLevel:'HIGH' as const}},
+    caps:{...policy},presentation:{requested:'updates',effective:'unavailable',degraded:true}};
+}
