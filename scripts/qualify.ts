@@ -2,6 +2,7 @@
 import {mkdirSync,openSync,writeFileSync,fsyncSync,closeSync,readFileSync} from 'node:fs';
 import {dirname,join,resolve} from 'node:path';
 import {createHash} from 'node:crypto';
+import type {StrictStage,StrictCode,StrictDiagnostic} from '../src/gemini/client';
 const model='gemini-3.5-flash-lite';
 const hash=(value:string|Uint8Array)=>createHash('sha256').update(value).digest('hex');
 export function parseArguments(args:string[]){
@@ -22,18 +23,57 @@ function intent(reference:string,mode:string){
  return {mode,authorization_ref:reference,state:'consumed',helper_sha256:hash(readFileSync(import.meta.path)),bun_sha256:hash(readFileSync(process.execPath)),created_at:new Date().toISOString()};
 }
 export async function discover(dir:string,reference:string){
- const record=intent(reference,'discovery');const body={contents:[{role:'user',parts:[{text:'Reply OK.'}]}],generationConfig:{maxOutputTokens:32000,thinkingConfig:{thinkingLevel:'HIGH'}}};
- const write=writer(resolve(dir));write('intent.json',{...record,request_sha256:hash(JSON.stringify(body)),endpoint_model:model});
+ const body={contents:[{role:'user',parts:[{text:'Reply OK.'}]}],generationConfig:{maxOutputTokens:32000,thinkingConfig:{thinkingLevel:'HIGH'}}};
+ let write:ReturnType<typeof writer>;
+ try{
+  const record=intent(reference,'discovery');write=writer(resolve(dir));
+  write('intent.json',{...record,request_sha256:hash(JSON.stringify(body)),endpoint_model:model});
+ }catch{throw Error('discovery refused; evidence unavailable, no replay');}
  const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),35000);
  const abort=()=>controller.abort();process.once('SIGINT',abort);process.once('SIGTERM',abort);
+ let stage:StrictStage|'configuration_import'|'result_publication'='configuration_import';
+ let code:StrictCode|'configuration_import_started'|'configuration_import_failed'|'invalid_model_version'|'invalid_response'|'invalid_usage'|'result_publication_failed'='configuration_import_failed';
+ let observation:'not_observed'|'invocation_attempted'|'http_status_observed'='not_observed';
+ let status:number|null=null;
+ let client:typeof import('../src/gemini/client')|undefined;
+ const diagnostic=(event:StrictDiagnostic)=>{
+  // Receipt of status is observable even if its durable publication fails.
+  if(event.stage==='http_response'){status=event.upstream_status;observation='http_status_observed';}
+  try{
+   const name=event.stage==='request_prepared'?'request_prepared.json':event.stage==='transport_invocation'?'send_started.json':'http_response.json';
+   write(name,{diagnostic_version:1,...event});
+  }catch{stage='diagnostic_persistence';code='diagnostic_persistence_failed';throw Error('discovery diagnostic persistence failed');}
+  if(event.stage==='transport_invocation')observation='invocation_attempted';
+ };
  try{
-  const {callGeminiStrict}=await import('../src/gemini/client');
-  const value:any=await callGeminiStrict(body,model,{signal:controller.signal,deadlineMs:30000,maxBytes:2097152});
-  if(controller.signal.aborted||! /^[a-zA-Z0-9_.:-]{1,128}$/.test(value?.modelVersion??'')||typeof value.modelVersion!=='string'||value.promptFeedback?.blockReason||value.candidates?.length!==1||value.candidates[0].finishReason!=='STOP'||value.candidates[0].safetyRatings?.some((r:any)=>r.blocked)||value.candidates[0].content?.role!=='model'||!value.candidates[0].content?.parts?.some((p:any)=>typeof p.text==='string'&&p.text.trim()))throw Error('unqualified discovery response');
+  try{write('configuration_import.json',{diagnostic_version:1,stage,code:'configuration_import_started'});}
+  catch{stage='diagnostic_persistence';code='diagnostic_persistence_failed';throw Error('discovery diagnostic persistence failed');}
+  // config's interactive missing-key path exits the process. Refuse it here so
+  // discovery can retain a consumed failure, without changing interactive defaults.
+  if(!(process.env.GEMINI_API_KEYS?process.env.GEMINI_API_KEYS.split(',').some(k=>k.trim()):process.env.GEMINI_API_KEY))throw Error('discovery configuration missing');
+  client=await import('../src/gemini/client');
+  const {config}=await import('../src/config');
+  const value:any=await client.callGeminiStrict(body,model,{signal:controller.signal,deadlineMs:30000,maxBytes:2097152,diagnostic});
+  stage='response_validation';code='invalid_model_version';
+  if(typeof value?.modelVersion!=='string'||! /^[a-zA-Z0-9_.:-]{1,128}$/.test(value.modelVersion)||config.geminiApiKeys.some(key=>value.modelVersion.includes(key)))throw Error('unqualified discovery version');
+  code='invalid_response';
+  if(controller.signal.aborted||value.promptFeedback?.blockReason||value.candidates?.length!==1||value.candidates[0].finishReason!=='STOP'||value.candidates[0].safetyRatings?.some((r:any)=>r.blocked)||value.candidates[0].content?.role!=='model'||!value.candidates[0].content?.parts?.some((p:any)=>typeof p.text==='string'&&p.text.trim()))throw Error('unqualified discovery response');
+  code='invalid_usage';
   const counters=['promptTokenCount','candidatesTokenCount','cachedContentTokenCount','thoughtsTokenCount','totalTokenCount','toolUsePromptTokenCount'];
   if(value.usageMetadata!==undefined&&(!value.usageMetadata||Array.isArray(value.usageMetadata)||typeof value.usageMetadata!=='object'||Object.entries(value.usageMetadata).some(([k,v])=>!counters.includes(k)||!Number.isSafeInteger(v)||Number(v)<0)))throw Error('invalid discovery usage');
+  stage='result_publication';code='result_publication_failed';
   const result={outcome:'observed_only',endpoint_model:model,modelVersion:value.modelVersion,finish:'STOP',usage:value.usageMetadata??null,response_sha256:hash(JSON.stringify(value))};write('result.json',result);return result;
- }catch(error){write('failure.json',{outcome:(error as {outcome?:string}).outcome==='completed_failure'?'completed_failure':'UNCERTAIN',consumed:true});throw Error('discovery failed; authority consumed, no replay');}
+ }catch(error){
+  let outcome='UNCERTAIN';
+  if(client&&error instanceof client.StrictTransportError){
+   stage=error.stage;code=error.code;status=error.upstream_status??status;
+   if(error.send_started&&observation==='not_observed')observation='invocation_attempted';
+   if(error.outcome==='completed_failure')outcome='completed_failure';
+  }
+  try{write('failure.json',{diagnostic_version:1,outcome,consumed:true,stage,code,transport_observation:observation,upstream_status:status});}
+  catch{throw Error('discovery failed; authority consumed, no replay; failure evidence unavailable');}
+  throw Error('discovery failed; authority consumed, no replay');
+ }
  finally{clearTimeout(timer);process.removeListener('SIGINT',abort);process.removeListener('SIGTERM',abort);}
 }
 export async function serve(dir:string,reference:string,version:string,port=8788){

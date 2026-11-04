@@ -27,9 +27,18 @@ export async function callGeminiRaw(
   }
 }
 
+// Closed diagnostic vocabulary: never include exception text, URLs, headers or bodies.
+export type StrictStage = 'local_validation'|'request_prepared'|'transport_invocation'|'transport'|'http_response'|'response_body'|'response_validation'|'diagnostic_persistence';
+export type StrictCode = 'local_validation_failed'|'request_prepared'|'invocation_attempted'|'transport_exception'|'request_timeout'|'request_aborted'|'status_received'|'http_error'|'body_failure'|'invalid_json'|'diagnostic_persistence_failed';
+export type StrictDiagnostic =
+  | {stage:'request_prepared';code:'request_prepared'}
+  | {stage:'transport_invocation';code:'invocation_attempted'}
+  | {stage:'http_response';code:'status_received';upstream_status:number};
+
 export class StrictTransportError extends Error {
   constructor(public outcome: 'rejected'|'completed_failure'|'uncertain', public send_started: boolean,
-              public upstream_status?: number) { super('strict_transport'); }
+              public upstream_status?: number, public stage:StrictStage='transport',
+              public code:StrictCode='transport_exception') { super('strict_transport'); }
 }
 
 export function raceStrictAbort<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
@@ -58,28 +67,48 @@ export async function readBoundedBody(body: ReadableStream<Uint8Array>|null, max
   } finally { void reader.cancel().catch(()=>{}); }
 }
 
-export async function callGeminiStrict(body:unknown,model:string,options:{signal:AbortSignal;deadlineMs:number;maxBytes:number}):Promise<unknown>{
+export async function callGeminiStrict(body:unknown,model:string,options:{signal:AbortSignal;deadlineMs:number;maxBytes:number;diagnostic?:(event:StrictDiagnostic)=>void}):Promise<unknown>{
   if(model!=='gemini-3.5-flash-lite'||options.signal.aborted||!Number.isInteger(options.maxBytes)||options.maxBytes<1||options.maxBytes>2097152||options.deadlineMs<=0||options.deadlineMs>30000)
-    throw new StrictTransportError('rejected',false);
+    throw new StrictTransportError('rejected',false,undefined,'local_validation','local_validation_failed');
   const controller=new AbortController();const abort=()=>controller.abort();
   options.signal.addEventListener('abort',abort,{once:true});
-  const timer=setTimeout(abort,options.deadlineMs);let started=false;
+  let timedOut=false;let diagnosticFailed=false;
+  const timer=setTimeout(()=>{timedOut=true;abort();},options.deadlineMs);
+  let started=false;let status:number|undefined;
+  let outcome:StrictTransportError['outcome']='rejected';
+  let stage:StrictStage='local_validation';let code:StrictCode='local_validation_failed';
+  const diagnostic=(event:StrictDiagnostic)=>{
+    try{options.diagnostic?.(event);}
+    catch{diagnosticFailed=true;stage='diagnostic_persistence';code='diagnostic_persistence_failed';throw Error('strict_transport');}
+  };
   try {
-    if(options.signal.aborted)throw new StrictTransportError('rejected',false);
-    started=true;
-    const response=await raceStrictAbort(fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent',{
-      method:'POST',redirect:'error',headers:{'content-type':'application/json','x-goog-api-key':config.geminiApiKey},
-      body:JSON.stringify(body),signal:controller.signal,
-    }),controller.signal);
-    if(response.status!==200){
+    // Complete local request preparation before the durable send boundary.
+    const request:RequestInit={method:'POST',redirect:'error',headers:{'content-type':'application/json','x-goog-api-key':config.geminiApiKey},body:JSON.stringify(body),signal:controller.signal};
+    diagnostic({stage:'request_prepared',code:'request_prepared'});
+    if(controller.signal.aborted)throw Error('strict_transport');
+    // Synchronous observer must finish (including fsync) before entering fetch.
+    // This is a conservative local boundary, never proof of remote receipt/billing.
+    diagnostic({stage:'transport_invocation',code:'invocation_attempted'});
+    started=true;outcome='uncertain';stage='transport';code='transport_exception';
+    const response=await raceStrictAbort(fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent',request),controller.signal);
+    status=response.status;
+    diagnostic({stage:'http_response',code:'status_received',upstream_status:status});
+    stage='response_body';code='body_failure';
+    if(status!==200){
       // A known HTTP rejection is definitive only after its bounded body ends.
       if(response.body)await readBoundedBody(response.body,options.maxBytes,controller.signal);
-      throw new StrictTransportError([400,401,403,404,429].includes(response.status)?'completed_failure':'uncertain',true,response.status);
+      if(controller.signal.aborted)throw Error('strict_transport');
+      outcome=[400,401,403,404,429].includes(status)?'completed_failure':'uncertain';
+      stage='http_response';code='http_error';throw Error('strict_transport');
     }
     const bytes=await readBoundedBody(response.body,options.maxBytes,controller.signal);
+    stage='response_validation';code='invalid_json';
     const result:unknown=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes));
-    if(controller.signal.aborted)throw new StrictTransportError('uncertain',true);
+    if(controller.signal.aborted)throw Error('strict_transport');
     return result;
-  }catch(error){controller.abort();if(error instanceof StrictTransportError)throw error;throw new StrictTransportError(started?'uncertain':'rejected',started);}
+  }catch{
+    if(started&&controller.signal.aborted&&!diagnosticFailed)code=timedOut?'request_timeout':'request_aborted';
+    controller.abort();throw new StrictTransportError(outcome,started,status,stage,code);
+  }
   finally{clearTimeout(timer);options.signal.removeEventListener('abort',abort);}
 }

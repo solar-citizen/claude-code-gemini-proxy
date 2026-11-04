@@ -27,3 +27,25 @@ test('oversized bodies, malformed JSON and network errors are bounded sanitized 
 test('immediate abort plus fetch rejection does not escape sanitized transport handling',async()=>{const c=new AbortController();globalThis.fetch=(()=>{c.abort();return Promise.reject(Error('secret-canary'));}) as unknown as typeof fetch;await expect(invoke(c.signal)).rejects.toThrow('strict_transport');await new Promise(r=>setTimeout(r,10));});
 
 test('an incomplete error body cannot establish a completed upstream rejection',async()=>{globalThis.fetch=(async()=>new Response(new ReadableStream({start(){}}),{status:400})) as unknown as typeof fetch;try{await invoke();throw Error('expected failure');}catch(error){expect((error as {outcome:string}).outcome).toBe('uncertain');expect(String(error)).toContain('strict_transport');}});
+
+test('strict diagnostics preserve local validation before invocation',async()=>{
+ const circular:any={};circular.self=circular;let calls=0;
+ globalThis.fetch=(async()=>{calls++;throw Error('synthetic-test-key');}) as unknown as typeof fetch;
+ try{await callGeminiStrict(circular,'gemini-3.5-flash-lite',{signal:new AbortController().signal,deadlineMs:30,maxBytes:1000});throw Error('expected failure');}
+ catch(error){expect(error).toMatchObject({send_started:false,outcome:'rejected',stage:'local_validation',code:'local_validation_failed'});expect(String(error)).not.toContain('synthetic-test-key');}
+ expect(calls).toBe(0);
+});
+test('strict diagnostic observer failure prevents fetch without leaking the persistence error',async()=>{
+ let calls=0;globalThis.fetch=(async()=>{calls++;return Response.json({});}) as unknown as typeof fetch;
+ try{await callGeminiStrict({},'gemini-3.5-flash-lite',{signal:new AbortController().signal,deadlineMs:30,maxBytes:1000,diagnostic(event:any){if(event.stage==='transport_invocation')throw Error('synthetic-test-key');}});throw Error('expected failure');}
+ catch(error){expect(error).toMatchObject({send_started:false,outcome:'rejected',stage:'diagnostic_persistence',code:'diagnostic_persistence_failed'});expect(String(error)).not.toContain('synthetic-test-key');}
+ expect(calls).toBe(0);
+});
+for(const phase of ['headers','body'])test('strict timeout records '+phase+' with any observed status',async()=>{
+ globalThis.fetch=(async()=>phase==='headers'?await new Promise(()=>{}):new Response(new ReadableStream({start(){}}),{status:403})) as unknown as typeof fetch;
+ try{await invoke();throw Error('expected failure');}catch(error){expect(error).toMatchObject({outcome:'uncertain',send_started:true,stage:phase==='headers'?'transport':'response_body',code:'request_timeout',...(phase==='body'?{upstream_status:403}:{})});}
+});
+test('strict HTTP status survives malformed response JSON',async()=>{
+ globalThis.fetch=(async()=>new Response('{synthetic-test-key')) as unknown as typeof fetch;
+ try{await invoke();throw Error('expected failure');}catch(error){expect(error).toMatchObject({outcome:'uncertain',stage:'response_validation',code:'invalid_json',upstream_status:200});expect(String(error)).not.toContain('synthetic-test-key');}
+});
