@@ -3,6 +3,7 @@ import {mkdirSync,openSync,writeFileSync,fsyncSync,closeSync,readFileSync} from 
 import {dirname,join,resolve} from 'node:path';
 import {createHash} from 'node:crypto';
 import type {StrictStage,StrictCode,StrictDiagnostic} from '../src/gemini/client';
+import {inspectUsageMetadata} from '../src/gemini/usage';
 const model='gemini-3.5-flash-lite';
 const hash=(value:string|Uint8Array)=>createHash('sha256').update(value).digest('hex');
 export function parseArguments(args:string[]){
@@ -59,10 +60,16 @@ export async function discover(dir:string,reference:string){
   code='invalid_response';
   if(controller.signal.aborted||value.promptFeedback?.blockReason||value.candidates?.length!==1||value.candidates[0].finishReason!=='STOP'||value.candidates[0].safetyRatings?.some((r:any)=>r.blocked)||value.candidates[0].content?.role!=='model'||!value.candidates[0].content?.parts?.some((p:any)=>typeof p.text==='string'&&p.text.trim()))throw Error('unqualified discovery response');
   code='invalid_usage';
-  const counters=['promptTokenCount','candidatesTokenCount','cachedContentTokenCount','thoughtsTokenCount','totalTokenCount','toolUsePromptTokenCount'];
-  if(value.usageMetadata!==undefined&&(!value.usageMetadata||Array.isArray(value.usageMetadata)||typeof value.usageMetadata!=='object'||Object.entries(value.usageMetadata).some(([k,v])=>!counters.includes(k)||!Number.isSafeInteger(v)||Number(v)<0)))throw Error('invalid discovery usage');
+  const inspected=inspectUsageMetadata(value.usageMetadata);
+  // Separate partial observation is never qualification or permission to replay.
+  try {
+   write('response_observation.json',{diagnostic_version:2,qualification:'UNQUALIFIED',model_version:value.modelVersion,finish_reason:'STOP',usage:inspected.observation});
+  } catch {
+   stage='diagnostic_persistence';code='diagnostic_persistence_failed';throw Error('discovery diagnostic persistence failed');
+  }
+  if(inspected.observation.failure)throw Error('invalid discovery usage');
   stage='result_publication';code='result_publication_failed';
-  const result={outcome:'observed_only',endpoint_model:model,modelVersion:value.modelVersion,finish:'STOP',usage:value.usageMetadata??null,response_sha256:hash(JSON.stringify(value))};write('result.json',result);return result;
+  const result={outcome:'observed_only',endpoint_model:model,modelVersion:value.modelVersion,finish:'STOP',usage:inspected.usage,response_sha256:hash(JSON.stringify(value))};write('result.json',result);return result;
  }catch(error){
   let outcome='UNCERTAIN';
   if(client&&error instanceof client.StrictTransportError){

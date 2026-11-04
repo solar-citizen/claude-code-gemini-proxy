@@ -95,3 +95,25 @@ test('qualification observer sees correlated real transport bodies and fails clo
  const data:any=await (await state.send(fixture.requests[0])).json();expect(data.receipt.outcome).toBe('completed');expect(seen.length).toBe(2);expect(seen[0].request_sha256).toBe(data.receipt.request_sha256);expect(seen[1].body.candidates[0].content.parts[0].thoughtSignature).toBe('actual-synthetic-signature');expect(JSON.stringify(seen)).not.toContain('synthetic-test-key');
  for(const phase of ['before_send','after_response']){let calls=0;const failing=await setup({qualificationObserver:(p:string)=>{if(p===phase)throw Error('fsync failure');}});globalThis.fetch=(async()=>{calls++;return Response.json(upstream());}) as unknown as typeof fetch;const result:any=await (await failing.send(fixture.requests[0])).json();expect(calls).toBe(phase==='before_send'?0:1);expect(result.receipt.outcome).toBe(phase==='before_send'?'rejected':'uncertain');expect((await failing.send(fixture.requests[0])).status).toBe(400);}
 });
+
+
+import {validUsageCases, invalidUsageCases} from './fixtures/usage';
+for (const [name, usageMetadata] of validUsageCases) {
+ test('documented Harness usage: ' + name, async () => {
+  const state = await setup(); let calls = 0;
+  globalThis.fetch = (async () => { calls++; return Response.json({...upstream(), usageMetadata}); }) as unknown as typeof fetch;
+  const response = await state.send(fixture.requests[0]); const value = await response.json() as any;
+  expect(response.status).toBe(200); expect(value.receipt).toMatchObject({outcome: 'completed', usage: usageMetadata ?? null});
+  expect(calls).toBe(1);
+ });
+}
+for (const [name, usageMetadata] of invalidUsageCases) {
+ test('invalid Harness usage closes attempt: ' + name, async () => {
+  const state = await setup(); let calls = 0;
+  globalThis.fetch = (async () => { calls++; return Response.json({...upstream(), usageMetadata}); }) as unknown as typeof fetch;
+  const response = await state.send(fixture.requests[0]); const raw = await response.text(); const value = JSON.parse(raw);
+  expect(response.status).toBe(502); expect(value.receipt.outcome).toBe('uncertain');
+  expect(value.anthropic_sse).toBeUndefined(); expect(raw).not.toContain('private-canary'); expect(raw).not.toContain('synthetic-test-key');
+  expect((await state.send(fixture.requests[0])).status).toBe(400); expect(calls).toBe(1);
+ });
+}

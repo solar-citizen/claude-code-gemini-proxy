@@ -10,6 +10,7 @@ import {config} from './config';
 import {translateHarnessGeneration} from './gemini/effort';
 import {callGeminiStrict,StrictTransportError,readBoundedBody} from './gemini/client';
 import {buildSseStream} from './anthropic/sse';
+import {inspectUsageMetadata} from './gemini/usage';
 
 const SCHEMAS: Record<string,unknown> = {
   "Edit": {
@@ -249,10 +250,9 @@ export function createHarnessHandler(options:HarnessOptions){
      if(state.calls.size>32||state.callBytes>262144)reject('tool_state_limit','uncertain');blocks.push(block);pending.push(id);
     }else reject('malformed_response_part','uncertain');
    }
-   const usage=result.usageMetadata===undefined?null:object(result.usageMetadata);
-   // This profile accepts only scalar token counters; unknown usage structures fail closed.
-   if(usage)keys(usage,['promptTokenCount','candidatesTokenCount','cachedContentTokenCount','thoughtsTokenCount','totalTokenCount','toolUsePromptTokenCount']);
-   for(const name of ['promptTokenCount','candidatesTokenCount','cachedContentTokenCount','thoughtsTokenCount','totalTokenCount','toolUsePromptTokenCount'])if(usage?.[name]!==undefined&&(!Number.isSafeInteger(usage[name])||Number(usage[name])<0))reject('invalid_usage','uncertain');
+   const inspected=inspectUsageMetadata(result.usageMetadata);
+   if(inspected.observation.failure)reject('invalid_usage','uncertain');
+   const usage=inspected.usage;
    const sse=await new Response(buildSseStream(blocks,pending.length?'tool_use':'end_turn',text(valid.q.model),{input_tokens:Number(usage?.promptTokenCount??0),output_tokens:Number(usage?.candidatesTokenCount??0)})).text();
    const envelope={receipt:{...baseReceipt(),outcome:'completed',response_sha256:strictDigest(sse),usage},anthropic_sse:sse};
    const serialized=JSON.stringify(envelope);const size=new TextEncoder().encode(serialized).length;

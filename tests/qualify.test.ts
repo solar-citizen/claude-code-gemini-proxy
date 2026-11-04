@@ -69,11 +69,11 @@ async function diagnosticCase(scenario:string){
    return (real as any)(v,...args);
   }) as typeof JSON.stringify);
  }
- if(['publish_fsync','diagnostic_fsync','status_fsync','failure_fsync','diagnostic_dir_fsync','publish_dir_fsync'].includes(scenario)){
+ if(['publish_fsync','diagnostic_fsync','status_fsync','failure_fsync','diagnostic_dir_fsync','publish_dir_fsync','observation_fsync','observation_dir_fsync'].includes(scenario)){
   const real=fs.fsyncSync;let injected=false;
   spyOn(fs,'fsyncSync').mockImplementation((fd:any)=>{
    const path=fs.readlinkSync('/proc/self/fd/'+fd);
-   const target=scenario.startsWith('publish')?'result.json':scenario==='status_fsync'?'http_response.json':scenario==='failure_fsync'?'failure.json':'send_started.json';
+   const target=scenario.startsWith('observation')?'response_observation.json':scenario.startsWith('publish')?'result.json':scenario==='status_fsync'?'http_response.json':scenario==='failure_fsync'?'failure.json':'send_started.json';
    if(!injected&&(scenario.endsWith('dir_fsync')?path===dir&&fs.existsSync(dir+'/'+target):path===dir+'/'+target)){injected=true;throw Error(secret);}
    real(fd);
   });
@@ -113,6 +113,8 @@ const failures:[string,string,string,string,number|null,number,string][]=[
  ['credential_version','response_validation','invalid_model_version','http_status_observed',200,1,'UNCERTAIN'],
  ['diagnostic_dir_fsync','diagnostic_persistence','diagnostic_persistence_failed','not_observed',null,0,'UNCERTAIN'],
  ['publish_dir_fsync','result_publication','result_publication_failed','http_status_observed',200,1,'UNCERTAIN'],
+ ['observation_fsync','diagnostic_persistence','diagnostic_persistence_failed','http_status_observed',200,1,'UNCERTAIN'],
+ ['observation_dir_fsync','diagnostic_persistence','diagnostic_persistence_failed','http_status_observed',200,1,'UNCERTAIN'],
  ['bad_usage','response_validation','invalid_usage','http_status_observed',200,1,'UNCERTAIN'],
  ['publish_fsync','result_publication','result_publication_failed','http_status_observed',200,1,'UNCERTAIN'],
  ['diagnostic_fsync','diagnostic_persistence','diagnostic_persistence_failed','not_observed',null,0,'UNCERTAIN'],
@@ -162,4 +164,41 @@ test('offline fetch guard disables redirects even for Request inputs, with no re
  const proc=Bun.spawn([process.execPath,'--no-env-file','--eval',code],{env:{PATH:'/usr/bin:/bin'},stdout:'pipe',stderr:'pipe'});
  const [exit,stderr]=await Promise.all([proc.exited,new Response(proc.stderr).text()]);
  expect(stderr).toBe('');expect(exit).toBe(0);
+});
+
+
+import {validUsageCases, invalidUsageCases} from './fixtures/usage';
+for (const [name, usageMetadata] of validUsageCases) {
+ test('documented discovery usage: ' + name, async () => {
+  const dir = join(root, 'usage'); let calls = 0;
+  globalThis.fetch = (async () => { calls++; return Response.json({modelVersion: 'synthetic-version', candidates: [{content: {role: 'model', parts: [{text: 'OK'}]}, finishReason: 'STOP'}], usageMetadata}); }) as unknown as typeof fetch;
+  const result = await discover(dir, 'offline-test');
+  expect(result).toMatchObject({outcome: 'observed_only', modelVersion: 'synthetic-version', finish: 'STOP', usage: usageMetadata ?? null});
+  expect(calls).toBe(1);
+ });
+}
+for (const [name, usageMetadata, field, rule] of invalidUsageCases) {
+ test('unqualified discovery usage failure: ' + name, async () => {
+  const dir = join(root, 'usage'); let calls = 0;
+  globalThis.fetch = (async () => { calls++; return Response.json({modelVersion: 'synthetic-version', candidates: [{content: {role: 'model', parts: [{text: 'private-canary'}]}, finishReason: 'STOP'}], usageMetadata}); }) as unknown as typeof fetch;
+  await expect(discover(dir, 'offline-test')).rejects.toThrow('authority consumed, no replay');
+  const failure = JSON.parse(readFileSync(join(dir, 'failure.json'), 'utf8'));
+  expect(failure).toMatchObject({outcome: 'UNCERTAIN', consumed: true, code: 'invalid_usage', upstream_status: 200, transport_observation: 'http_status_observed'});
+  const observation = JSON.parse(readFileSync(join(dir, 'response_observation.json'), 'utf8'));
+  expect(observation).toMatchObject({diagnostic_version: 2, qualification: 'UNQUALIFIED', model_version: 'synthetic-version', finish_reason: 'STOP', usage: {failure: {field, rule}}});
+  expect(existsSync(join(dir, 'result.json'))).toBe(false);
+  const before = readdirSync(dir).map(name => readFileSync(join(dir, name), 'utf8')).join('');
+  expect(before).not.toContain('private-canary'); expect(before).not.toContain('synthetic-test-key');
+  expect(Buffer.byteLength(JSON.stringify(observation))).toBeLessThan(4096);
+  await expect(discover(dir, 'offline-test')).rejects.toThrow(); expect(calls).toBe(1);
+  expect(readdirSync(dir).map(name => readFileSync(join(dir, name), 'utf8')).join('')).toBe(before);
+ });
+}
+test('usage diagnostics retain only allowlisted types and individually valid scalar counts', async () => {
+ const dir = join(root, 'usage');
+ globalThis.fetch = (async () => Response.json({modelVersion: 'synthetic-version', candidates: [{content: {role: 'model', parts: [{text: 'private-canary'}]}, finishReason: 'STOP'}], usageMetadata: {promptTokenCount: 0, candidatesTokenCount: 'private-canary', thoughtsTokenCount: 7, totalTokenCount: 20, promptTokensDetails: [{tokenCount: -1, extra: 'private-canary'}], 'synthetic-test-key': 'private-canary'}})) as unknown as typeof fetch;
+ await expect(discover(dir, 'offline-test')).rejects.toThrow();
+ const raw = readFileSync(join(dir, 'response_observation.json'), 'utf8');
+ expect(JSON.parse(raw).usage).toMatchObject({type: 'object', fields: [{name: 'promptTokenCount', type: 'number'}, {name: 'candidatesTokenCount', type: 'string'}, {name: 'thoughtsTokenCount', type: 'number'}, {name: 'totalTokenCount', type: 'number'}, {name: 'promptTokensDetails', type: 'array'}], token_counts: {promptTokenCount: 0, thoughtsTokenCount: 7, totalTokenCount: 20}, unknown_fields: true, failure: {field: 'candidatesTokenCount', rule: 'nonnegative_safe_integer'}});
+ expect(raw).not.toContain('private-canary'); expect(raw).not.toContain('synthetic-test-key');
 });
