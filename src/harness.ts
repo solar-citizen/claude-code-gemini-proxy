@@ -156,7 +156,7 @@ function startupIdentity():string{
 }
 type Call={block:ObjectValue;part:ObjectValue};
 type Attempt={id:string;created:number;sequence:number;closed:boolean;busy:boolean;history:string;historyLength:number;context:string;calls:Map<string,Call>;modelParts:Map<number,ObjectValue[]>;pending:string[];inputBytes:number;outputBytes:number;callBytes:number;};
-export type HarnessOptions={enabled:boolean;versions:string[];maxRequestTokens?:number;maxUpstreamTokens?:number;deadlineMs?:number;now?:()=>number};
+export type HarnessOptions={enabled:boolean;versions:string[];qualificationObserver?:(phase:"before_send"|"after_response",evidence:Record<string,unknown>)=>void;maxRequestTokens?:number;maxUpstreamTokens?:number;deadlineMs?:number;now?:()=>number};
 export function createHarnessHandler(options:HarnessOptions){
  const enabled=options.enabled, deadlineMs=options.deadlineMs??30000;
  const policy=Object.freeze({max_request_tokens:options.maxRequestTokens??32000,max_upstream_tokens:options.maxUpstreamTokens??32000});
@@ -214,10 +214,17 @@ export function createHarnessHandler(options:HarnessOptions){
    })}));
    if(req.signal.aborted)reject('client_disconnected');
    if(now()-state.created>=180000)reject('wall_limit');
+   const exchangeEnd=now()+Math.min(deadlineMs,Math.max(1,180000-(now()-state.created)));
+   const upstreamBody={contents,generationConfig:translation.generationConfig,systemInstruction:{parts:valid.system.map(b=>({text:b.text}))},tools:valid.tools};
+   const observed={attempt_id:attempt,sequence,request_sha256:requestHash,instance,source_sha256:source};
+   options.qualificationObserver?.('before_send',{...observed,body:upstreamBody});
+   if(now()>=exchangeEnd||req.signal.aborted)reject('exchange_deadline');
    started=true;
-   const response=await callGeminiStrict({contents,generationConfig:translation.generationConfig,systemInstruction:{parts:valid.system.map(b=>({text:b.text}))},tools:valid.tools},'gemini-3.5-flash-lite',{signal:req.signal,deadlineMs:Math.min(deadlineMs,Math.max(1,180000-(now()-state.created))),maxBytes:limits.max_bytes});
+   const response=await callGeminiStrict(upstreamBody,'gemini-3.5-flash-lite',{signal:req.signal,deadlineMs:Math.min(30000,Math.max(1,exchangeEnd-now())),maxBytes:limits.max_bytes});
    if(now()-state.created>=180000)reject('wall_limit','uncertain');
    if(state.closed||req.signal.aborted)reject('attempt_interrupted','uncertain');
+   options.qualificationObserver?.('after_response',{...observed,body:response});
+   if(now()>=exchangeEnd||req.signal.aborted)reject('exchange_deadline','uncertain');
    const result=object(response);keys(result,['modelVersion','candidates','usageMetadata','promptFeedback','responseId','createTime']);upstreamVersion=typeof result.modelVersion==='string'&&/^[a-zA-Z0-9_.:-]{1,128}$/.test(result.modelVersion)?result.modelVersion:null;
    if(object(result.promptFeedback??{}).blockReason)reject('blocked_generation','completed_failure');
    const candidates=array(result.candidates);if(candidates.length!==1)reject('candidate_count','uncertain');
@@ -253,6 +260,7 @@ export function createHarnessHandler(options:HarnessOptions){
    state.outputBytes+=size;state.sequence=sequence;state.pending=pending;state.busy=false;state.closed=!pending.length;
    state.modelParts.set(valid.messages.length,parts);
    state.historyLength=valid.messages.length+1;state.history=strictDigest(canonical([...valid.messages,{role:'assistant',content:blocks}]));
+   if(now()>=exchangeEnd||req.signal.aborted)reject('exchange_deadline','uncertain');
    return new Response(serialized,{headers:{'content-type':'application/json','cache-control':'no-store'}});
   }catch(error){
    if(state){state.closed=true;state.busy=false;}

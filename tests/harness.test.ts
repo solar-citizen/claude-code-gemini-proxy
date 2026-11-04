@@ -88,3 +88,10 @@ test('Bun client socket disconnect aborts the synthetic upstream fetch',async()=
   expect(upstreamSignal?.aborted).toBe(true);
  }finally{controller.abort();await server.stop(true);await pending;}
 });
+
+test('qualification observer sees correlated real transport bodies and fails closed on evidence loss',async()=>{
+ const seen:any[]=[];const state=await setup({qualificationObserver:(phase:string,evidence:any)=>seen.push({phase,...structuredClone(evidence)})});
+ globalThis.fetch=(async()=>Response.json(upstream([{functionCall:{name:'Read',args:{file_path:'/repo/normalize.py'}},thoughtSignature:'actual-synthetic-signature'}]))) as unknown as typeof fetch;
+ const data:any=await (await state.send(fixture.requests[0])).json();expect(data.receipt.outcome).toBe('completed');expect(seen.length).toBe(2);expect(seen[0].request_sha256).toBe(data.receipt.request_sha256);expect(seen[1].body.candidates[0].content.parts[0].thoughtSignature).toBe('actual-synthetic-signature');expect(JSON.stringify(seen)).not.toContain('synthetic-test-key');
+ for(const phase of ['before_send','after_response']){let calls=0;const failing=await setup({qualificationObserver:(p:string)=>{if(p===phase)throw Error('fsync failure');}});globalThis.fetch=(async()=>{calls++;return Response.json(upstream());}) as unknown as typeof fetch;const result:any=await (await failing.send(fixture.requests[0])).json();expect(calls).toBe(phase==='before_send'?0:1);expect(result.receipt.outcome).toBe(phase==='before_send'?'rejected':'uncertain');expect((await failing.send(fixture.requests[0])).status).toBe(400);}
+});
