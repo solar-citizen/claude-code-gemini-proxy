@@ -35,10 +35,21 @@ export type StrictDiagnostic =
   | {stage:'transport_invocation';code:'invocation_attempted'}
   | {stage:'http_response';code:'status_received';upstream_status:number};
 
+// Exact runtime reports only; these tokens do not prove remote receipt or cause.
+const STRICT_RUNTIME_CODES = new Set(['ECONNREFUSED','ECONNRESET','EPIPE','ETIMEDOUT','ENOTFOUND','EAI_AGAIN',
+  'ConnectionRefused','ConnectionClosed','FailedToOpenSocket','CERT_HAS_EXPIRED',
+  'ERR_TLS_CERT_ALTNAME_INVALID','UNABLE_TO_VERIFY_LEAF_SIGNATURE']);
+function strictRuntimeCode(error:unknown):string {
+  try {
+    // Never read message/stack/cause or invoke a code getter.
+    const code=error instanceof Error?Object.getOwnPropertyDescriptor(error,'code')?.value:undefined;
+    return typeof code==='string'&&STRICT_RUNTIME_CODES.has(code)?code:'unknown';
+  }catch{return 'unknown';}
+}
 export class StrictTransportError extends Error {
   constructor(public outcome: 'rejected'|'completed_failure'|'uncertain', public send_started: boolean,
               public upstream_status?: number, public stage:StrictStage='transport',
-              public code:StrictCode='transport_exception') { super('strict_transport'); }
+              public code:StrictCode='transport_exception', public runtime_code:string='unknown') { super('strict_transport'); }
 }
 
 export function raceStrictAbort<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
@@ -106,9 +117,11 @@ export async function callGeminiStrict(body:unknown,model:string,options:{signal
     const result:unknown=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes));
     if(controller.signal.aborted)throw Error('strict_transport');
     return result;
-  }catch{
+  }catch(error){
+    let runtime_code='unknown';
     if(started&&controller.signal.aborted&&!diagnosticFailed)code=timedOut?'request_timeout':'request_aborted';
-    controller.abort();throw new StrictTransportError(outcome,started,status,stage,code);
+    else if(stage==='transport'||stage==='response_body')runtime_code=strictRuntimeCode(error);
+    controller.abort();throw new StrictTransportError(outcome,started,status,stage,code,runtime_code);
   }
   finally{clearTimeout(timer);options.signal.removeEventListener('abort',abort);}
 }

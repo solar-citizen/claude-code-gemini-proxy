@@ -150,3 +150,24 @@ for(const mutation of ['unknown sibling','MAX_TOKENS','unknown finish','missing 
  globalThis.fetch=(async()=>{sends++;return Response.json(data);}) as unknown as typeof fetch;
  const response=await state.send(fixture.requests[0]);const raw=await response.text();const result=JSON.parse(raw);expect(response.status).toBe(502);expect(result.receipt.outcome).toBe(mutation==='MAX_TOKENS'?'completed_failure':'uncertain');expect(result.anthropic_sse).toBeUndefined();expect(raw).not.toContain('private-canary');expect(sends).toBe(1);
 });
+for(const kind of ['socket','body','json','http','timeout','unknown'])test('uncertain strict transport publishes bounded diagnostic '+kind,async()=>{
+ let sends=0;const state=await setup({deadlineMs:5});
+ globalThis.fetch=(async()=>{sends++;const failure=Object.assign(Error('private-key-canary'),{code:'ECONNRESET'});
+  if(kind==='socket')throw failure;
+  if(kind==='unknown')throw Error('ECONNREFUSED private-key-canary');
+  if(kind==='timeout')return await new Promise(()=>{});
+  if(kind==='body')return new Response(new ReadableStream({start(c){c.error(failure);}}),{status:403});
+  return new Response('private-key-canary',{status:kind==='http'?503:200});
+ }) as unknown as typeof fetch;
+ const response=await state.send(fixture.requests[0]);const raw=await response.text();const result=JSON.parse(raw);
+ const expected:any={socket:{stage:'transport',code:'transport_exception',runtime_code:'ECONNRESET'},body:{stage:'response_body',code:'body_failure',runtime_code:'ECONNRESET'},json:{stage:'response_validation',code:'invalid_json',runtime_code:'unknown'},http:{stage:'http_response',code:'http_error',runtime_code:'unknown'},timeout:{stage:'transport',code:'request_timeout',runtime_code:'unknown'},unknown:{stage:'transport',code:'transport_exception',runtime_code:'unknown'}};
+ expect(response.status).toBe(502);expect(result.error).toBe('strict_transport');expect(result.transport).toEqual(expected[kind]);
+ expect(result.receipt).toMatchObject({outcome:'uncertain',send_started:true,send_count:1,attempt_id:state.attempt,sequence:1,request_sha256:sha(JSON.stringify(fixture.requests[0])),instance:state.caps.instance,source_sha256:state.caps.source_sha256});
+ if(['body','json','http'].includes(kind))expect(result.receipt.upstream_status).toBe(kind==='body'?403:kind==='http'?503:200);
+ expect(raw).not.toContain('private-key-canary');expect(raw.length).toBeLessThan(4096);
+ expect((await state.send(fixture.requests[0])).status).toBe(400);expect(sends).toBe(1);
+});
+test('complete HTTP rejection retains its existing definitive envelope shape',async()=>{
+ const state=await setup();globalThis.fetch=(async()=>new Response('private-key-canary',{status:403})) as unknown as typeof fetch;
+ const response=await state.send(fixture.requests[0]);const result:any=await response.json();expect(Object.keys(result).sort()).toEqual(['error','receipt']);expect(result.receipt).toMatchObject({outcome:'completed_failure',upstream_status:403,send_count:1});
+});

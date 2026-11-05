@@ -49,3 +49,28 @@ test('strict HTTP status survives malformed response JSON',async()=>{
  globalThis.fetch=(async()=>new Response('{synthetic-test-key')) as unknown as typeof fetch;
  try{await invoke();throw Error('expected failure');}catch(error){expect(error).toMatchObject({outcome:'uncertain',stage:'response_validation',code:'invalid_json',upstream_status:200});expect(String(error)).not.toContain('synthetic-test-key');}
 });
+for(const runtime_code of ['ECONNREFUSED','ECONNRESET','EPIPE','ETIMEDOUT','ENOTFOUND','EAI_AGAIN','ConnectionRefused','ConnectionClosed','FailedToOpenSocket','CERT_HAS_EXPIRED','ERR_TLS_CERT_ALTNAME_INVALID','UNABLE_TO_VERIFY_LEAF_SIGNATURE'])test('strict failure retains only allowlisted runtime code '+runtime_code,async()=>{
+ for(const phase of ['headers','body']){
+  let sends=0;const failure=Object.assign(Error('private-key-canary'),{code:runtime_code,url:'private-key-canary',stack:'private-key-canary'});
+  globalThis.fetch=(async()=>{sends++;if(phase==='headers')throw failure;return new Response(new ReadableStream({start(c){c.error(failure);}}),{status:403});}) as unknown as typeof fetch;
+  const error=await invoke().catch(e=>e);
+  expect(error).toMatchObject({outcome:'uncertain',send_started:true,stage:phase==='headers'?'transport':'response_body',code:phase==='headers'?'transport_exception':'body_failure',runtime_code,...(phase==='body'?{upstream_status:403}:{})});
+  expect(JSON.stringify(error)+String(error)).not.toContain('private-key-canary');expect(sends).toBe(1);
+ }
+});
+test('strict runtime code extraction ignores messages, nested causes, getters and unrecognized codes',async()=>{
+ const getter=Object.defineProperty(Error('private-key-canary'), 'code',{get(){throw Error('getter must not run');}});
+ for(const failure of [Error('ECONNRESET'),Object.assign(Error('private-key-canary'),{cause:{code:'ECONNRESET'}}),Object.assign(Error('private-key-canary'),{code:'private-key-canary'}),getter,null,'ECONNRESET',Object.create({code:'ECONNRESET'})]){
+  globalThis.fetch=(async()=>{throw failure;}) as unknown as typeof fetch;
+  const error=await invoke().catch(e=>e);expect(error).toMatchObject({outcome:'uncertain',stage:'transport',code:'transport_exception',runtime_code:'unknown'});
+  expect(JSON.stringify(error)+String(error)).not.toContain('private-key-canary');
+ }
+});
+test('locally observed cancellation takes precedence over a simultaneous socket code',async()=>{
+ const c=new AbortController();globalThis.fetch=(async()=>{c.abort();throw Object.assign(Error('private-key-canary'),{code:'ECONNRESET'});}) as unknown as typeof fetch;
+ expect(await invoke(c.signal).catch(e=>e)).toMatchObject({outcome:'uncertain',code:'request_aborted',runtime_code:'unknown'});
+});
+test('deadline is a local timeout, without an invented socket cause',async()=>{
+ globalThis.fetch=(()=>new Promise(()=>{})) as unknown as typeof fetch;
+ expect(await invoke().catch(e=>e)).toMatchObject({outcome:'uncertain',code:'request_timeout',runtime_code:'unknown'});
+});

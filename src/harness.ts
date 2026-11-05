@@ -269,7 +269,10 @@ export function createHarnessHandler(options:HarnessOptions){
    let outcome:Outcome=started?'uncertain':'rejected';let code='strict_contract';let status:number|undefined;
    if(error instanceof StrictTransportError){outcome=error.outcome;started=error.send_started;status=error.upstream_status;code='strict_transport';}
    else if(error instanceof ContractError){code=error.code;outcome=started&&error.outcome==='rejected'?'uncertain':error.outcome;}
-   return json({error:code,receipt:{...baseReceipt(),outcome,...(status!==undefined?{upstream_status:status}:{})}},outcome==='rejected'?400:502);
+   // Diagnostic-only extension for uncertainty; definitive receipts stay unchanged.
+   const transport=error instanceof StrictTransportError&&outcome==='uncertain'
+     ?{transport:{stage:error.stage,code:error.code,runtime_code:error.runtime_code}}:{};
+   return json({error:code,...transport,receipt:{...baseReceipt(),outcome,...(status!==undefined?{upstream_status:status}:{})}},outcome==='rejected'?400:502);
   }
  };
 }
