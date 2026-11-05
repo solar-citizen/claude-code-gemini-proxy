@@ -229,7 +229,9 @@ export function createHarnessHandler(options:HarnessOptions){
    const result=object(response);keys(result,['modelVersion','candidates','usageMetadata','promptFeedback','responseId','createTime']);upstreamVersion=typeof result.modelVersion==='string'&&/^[a-zA-Z0-9_.:-]{1,128}$/.test(result.modelVersion)?result.modelVersion:null;
    if(object(result.promptFeedback??{}).blockReason)reject('blocked_generation','completed_failure');
    const candidates=array(result.candidates);if(candidates.length!==1)reject('candidate_count','uncertain');
-   const candidate=object(candidates[0]);keys(candidate,['content','finishReason','index','safetyRatings','avgLogprobs']);finish=typeof candidate.finishReason==='string'&&/^[A-Z_]{1,64}$/.test(candidate.finishReason)?candidate.finishReason:null;
+   const candidate=object(candidates[0]);keys(candidate,['content','finishReason','finishMessage','index','safetyRatings','avgLogprobs']);finish=typeof candidate.finishReason==='string'&&/^[A-Z_]{1,64}$/.test(candidate.finishReason)?candidate.finishReason:null;
+   // Optional output-only detail: validate its type without interpreting or reflecting it.
+   if(candidate.finishMessage!==undefined)text(candidate.finishMessage);
    if(['MAX_TOKENS','SAFETY','RECITATION','BLOCKLIST','PROHIBITED_CONTENT','SPII','MALFORMED_FUNCTION_CALL','UNEXPECTED_TOOL_CALL','IMAGE_SAFETY'].includes(String(finish)))reject('generation_failed','completed_failure');
    if(finish!=='STOP')reject('missing_or_unknown_finish','uncertain');
    if(!upstreamVersion||!versions.includes(upstreamVersion))reject('upstream_identity','uncertain');
