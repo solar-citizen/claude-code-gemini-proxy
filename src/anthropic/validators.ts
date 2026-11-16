@@ -66,6 +66,10 @@ function isAnthropicSystemBlock(value: unknown): value is AnthropicSystemBlock {
   return isRecord(value) && (value.text === undefined || typeof value.text === "string");
 }
 
+function isAnthropicOutputConfig(value: unknown): value is AnthropicOutputConfig {
+  return isRecord(value) && (value.effort === undefined || typeof value.effort === "string");
+}
+
 function isAnthropicTool(value: unknown): value is AnthropicTool {
   return (
     isRecord(value) &&
@@ -95,6 +99,10 @@ function checkMessage(value: unknown, index: number, issues: string[]): void {
 
   if (!isAnthropicRole(value.role)) {
     issues.push(`${path}.role: expected "user" | "assistant" | "system", got ${JSON.stringify(value.role)}`);
+  }
+
+  if (value.output_config !== undefined && !isAnthropicOutputConfig(value.output_config)) {
+    issues.push(`${path}.output_config: expected an object with effort string`);
   }
 
   const { content } = value;
@@ -132,8 +140,12 @@ export function isAnthropicMessagesRequestBody(
     return false;
   }
 
-  const { messages, system, tools, max_tokens, temperature, stream, model } = value;
+  const { messages, system, tools, max_tokens, temperature, stream, model, output_config } = value;
   const before = issues.length;
+
+  if (output_config !== undefined && !isAnthropicOutputConfig(output_config)) {
+    issues.push(`output_config: expected an object with effort string, got ${describe(output_config)}`);
+  }
 
   if (messages !== undefined) {
     if (!Array.isArray(messages)) {
