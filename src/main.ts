@@ -1,3 +1,4 @@
+import { handleHarnessRequest } from "./harness";
 import { config } from "./config";
 import { anthropicToolsToGemini, anthropicMessagesToGeminiContents, geminiPartsToAnthropicBlocks } from "./converters";
 import { buildSseStream } from "./anthropic/sse";
@@ -10,11 +11,14 @@ import { rotationManager } from "./gemini/rotation-instance";
 import { routeRequest } from "./gemini/router";
 import { AllCombinationsExhaustedError, GeminiUpstreamError } from "./gemini/rotation";
 import { timeoutMs } from "./utils/common.util";
+import { extractEffort, mapEffortToThinkingConfig, calculateMaxOutputTokens, formatResponseModel } from "./gemini/effort";
 
 export async function handleRequest(req: Request): Promise<Response> {
   const start = Date.now();
   const { method } = req;
   const { pathname } = new URL(req.url);
+
+  if (pathname === "/harness" || pathname.startsWith("/harness/")) return handleHarnessRequest(req);
 
   try {
     if (pathname === "/v1/models") {
@@ -82,13 +86,21 @@ export async function handleRequest(req: Request): Promise<Response> {
     const { messages, system, tools: anthropicTools, max_tokens, temperature, stream, model } = body;
     const requestedModel = model?.trim() || config.defaultGeminiModel;
 
-      const generationConfig: GeminiGenerationConfig = {
-        maxOutputTokens: max_tokens ?? 4096,
-      };
+    const effort = extractEffort(body);
+    const thinkingConfig = mapEffortToThinkingConfig(effort);
+    const thinkingBudget = thinkingConfig?.thinkingBudget;
 
-      if (temperature != null) {
-        generationConfig.temperature = temperature;
-      }
+    const generationConfig: GeminiGenerationConfig = {
+      maxOutputTokens: calculateMaxOutputTokens(max_tokens, thinkingBudget),
+    };
+
+    if (thinkingConfig) {
+      generationConfig.thinkingConfig = thinkingConfig;
+    }
+
+    if (temperature != null) {
+      generationConfig.temperature = temperature;
+    }
 
       const tools = anthropicToolsToGemini(anthropicTools);
 
@@ -115,6 +127,8 @@ export async function handleRequest(req: Request): Promise<Response> {
         (apiKey, geminiModel) => callGeminiRaw(geminiBody, geminiModel, timeoutMs, apiKey),
       );
 
+      const responseModel = formatResponseModel(actualModel, effort);
+
       const geminiRes: unknown = await geminiResponse.json();
       debugLog("gemini response", geminiRes);
 
@@ -140,10 +154,10 @@ export async function handleRequest(req: Request): Promise<Response> {
         cached_tokens: cachedContentTokenCount ?? 0,
       };
 
-      log("info", `${method} ${pathname} -> ${stopReason}`, {
+      log("info", `${method} ${pathname} -> ${stopReason} [model: ${responseModel}] [tier: ${tier}]`, {
         ms: Date.now() - start,
         tier,
-        model: actualModel,
+        model: responseModel,
         usage,
         toolCalls: blocks.filter((block): block is Extract<AnthropicOutputBlock, { type: "tool_use" }> => {
           return block.type === "tool_use";
@@ -151,7 +165,7 @@ export async function handleRequest(req: Request): Promise<Response> {
       });
 
       if (stream) {
-        return new Response(buildSseStream(blocks, stopReason, actualModel, usage), {
+        return new Response(buildSseStream(blocks, stopReason, responseModel, usage), {
           headers: { "content-type": "text/event-stream; charset=utf-8", "cache-control": "no-cache", connection: "keep-alive" },
         });
       }
@@ -161,7 +175,7 @@ export async function handleRequest(req: Request): Promise<Response> {
         type: "message",
         role: "assistant",
         content: blocks,
-        model: actualModel,
+        model: responseModel,
         stop_reason: stopReason,
         stop_sequence: null,
         usage: {
@@ -224,11 +238,10 @@ export async function handleRequest(req: Request): Promise<Response> {
   }
 }
 
+export const serverOptions = { hostname: "127.0.0.1", port: config.port, fetch: handleRequest };
+
 if (import.meta.main) {
-  Bun.serve({
-    port: config.port,
-    fetch: handleRequest,
-  });
+  Bun.serve(serverOptions);
 
   console.log(`Gemini<->Anthropic proxy listening on http://127.0.0.1:${config.port} in ${config.rotationMode} mode`);
 

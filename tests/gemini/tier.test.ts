@@ -15,6 +15,11 @@ describe("stripModelSuffix", () => {
     expect(stripModelSuffix("model[8k]")).toBe("model");
   });
 
+  it("strips (effort: ...) annotation", () => {
+    expect(stripModelSuffix("gemini-3.5-flash-lite[1m] (effort: high)")).toBe("gemini-3.5-flash-lite");
+    expect(stripModelSuffix("gemini-2.5-flash (effort: medium)")).toBe("gemini-2.5-flash");
+  });
+
   it("leaves bare model names unchanged", () => {
     expect(stripModelSuffix("gemini-3.5-flash-lite")).toBe("gemini-3.5-flash-lite");
   });
@@ -43,6 +48,12 @@ describe("detectTier (via createTierDetector)", () => {
     expect(detectTier("gemini-3.6-flash[1m]")).toBe("opus");
     expect(detectTier("gemini-3.5-flash[1m]")).toBe("sonnet");
     expect(detectTier("gemini-3.5-flash-lite[1m]")).toBe("haiku");
+  });
+
+  it("detects models with (effort: ...) annotation", () => {
+    expect(detectTier("gemini-3.6-flash[1m] (effort: high)")).toBe("opus");
+    expect(detectTier("gemini-3.5-flash (effort: medium)")).toBe("sonnet");
+    expect(detectTier("gemini-3.5-flash-lite[1m] (effort: low)")).toBe("haiku");
   });
 
   it("defaults to sonnet for unknown models", () => {

@@ -1,0 +1,512 @@
+{
+  "scope": "synthetic only; no live identity or signature evidence",
+  "requests": [
+    {
+      "model": "gemini-3.5-flash-lite",
+      "messages": [
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "Read normalize.py and implement stripping whitespace and lowercasing. Edit only normalize.py.",
+              "cache_control": {
+                "type": "ephemeral"
+              }
+            }
+          ]
+        }
+      ],
+      "system": [
+        {
+          "type": "text",
+          "text": "x-anthropic-billing-header: cc_version=2.1.311.fa6; cc_entrypoint=sdk-cli;"
+        },
+        {
+          "type": "text",
+          "text": "You are a Claude agent, built on Anthropic's Claude Agent SDK.",
+          "cache_control": {
+            "type": "ephemeral"
+          }
+        },
+        {
+          "type": "text",
+          "text": "CWD: /repo\nDate: 2026-11-03",
+          "cache_control": {
+            "type": "ephemeral"
+          }
+        }
+      ],
+      "tools": [
+        {
+          "name": "Edit",
+          "description": "modify file contents in place",
+          "input_schema": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+            "properties": {
+              "file_path": {
+                "description": "The absolute path to the file to modify",
+                "type": "string"
+              },
+              "old_string": {
+                "description": "The text to replace",
+                "type": "string"
+              },
+              "new_string": {
+                "description": "The text to replace it with (must be different from old_string)",
+                "type": "string"
+              },
+              "replace_all": {
+                "description": "Replace all occurrences of old_string (default false)",
+                "default": false,
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "file_path",
+              "old_string",
+              "new_string"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "Read",
+          "description": "read files, images, PDFs, notebooks",
+          "input_schema": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+            "properties": {
+              "file_path": {
+                "description": "The absolute path to the file to read",
+                "type": "string"
+              },
+              "offset": {
+                "description": "The line number to start reading from. Only provide if the file is too large to read at once",
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "limit": {
+                "description": "The number of lines to read. Only provide if the file is too large to read at once.",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "pages": {
+                "description": "Page range for PDF files (e.g., \"1-5\", \"3\", \"10-20\"). Only applicable to PDF files. Maximum 20 pages per request.",
+                "type": "string"
+              },
+              "allow_large": {
+                "description": "Set to true to read a text file, or a line range of one, that is over the usual size limits, up to what still fits in your context. Only use this when you genuinely need all of it or the user asked for the whole file; otherwise read it in parts with offset and limit, or search it.",
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "file_path"
+            ],
+            "additionalProperties": false
+          }
+        }
+      ],
+      "metadata": {
+        "user_id": "{\"device_id\":\"df6db2478766169a29d0114a86a0b277e602fe226ec1a3ce3c0d4dc3e1c22d86\",\"account_uuid\":\"\",\"session_id\":\"af07d55b-3bf5-4e57-a23e-8484924e421e\"}"
+      },
+      "max_tokens": 32000,
+      "thinking": {
+        "type": "adaptive",
+        "display": "updates"
+      },
+      "context_management": {
+        "edits": [
+          {
+            "type": "clear_thinking_20251015",
+            "keep": "all"
+          }
+        ]
+      },
+      "output_config": {
+        "effort": "high"
+      },
+      "stream": true
+    },
+    {
+      "model": "gemini-3.5-flash-lite",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Read normalize.py and implement stripping whitespace and lowercasing. Edit only normalize.py."
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "tool_use",
+              "id": "toolu_probe_1",
+              "name": "Read",
+              "input": {
+                "file_path": "/repo/normalize.py"
+              }
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "content": [
+            {
+              "tool_use_id": "toolu_probe_1",
+              "type": "tool_result",
+              "content": "1\tdef normalize(value):\n2\t    return value\n3\t",
+              "cache_control": {
+                "type": "ephemeral"
+              }
+            }
+          ]
+        }
+      ],
+      "system": [
+        {
+          "type": "text",
+          "text": "x-anthropic-billing-header: cc_version=2.1.311.fa6; cc_entrypoint=sdk-cli;"
+        },
+        {
+          "type": "text",
+          "text": "You are a Claude agent, built on Anthropic's Claude Agent SDK.",
+          "cache_control": {
+            "type": "ephemeral"
+          }
+        },
+        {
+          "type": "text",
+          "text": "CWD: /repo\nDate: 2026-11-03",
+          "cache_control": {
+            "type": "ephemeral"
+          }
+        }
+      ],
+      "tools": [
+        {
+          "name": "Edit",
+          "description": "modify file contents in place",
+          "input_schema": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+            "properties": {
+              "file_path": {
+                "description": "The absolute path to the file to modify",
+                "type": "string"
+              },
+              "old_string": {
+                "description": "The text to replace",
+                "type": "string"
+              },
+              "new_string": {
+                "description": "The text to replace it with (must be different from old_string)",
+                "type": "string"
+              },
+              "replace_all": {
+                "description": "Replace all occurrences of old_string (default false)",
+                "default": false,
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "file_path",
+              "old_string",
+              "new_string"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "Read",
+          "description": "read files, images, PDFs, notebooks",
+          "input_schema": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+            "properties": {
+              "file_path": {
+                "description": "The absolute path to the file to read",
+                "type": "string"
+              },
+              "offset": {
+                "description": "The line number to start reading from. Only provide if the file is too large to read at once",
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "limit": {
+                "description": "The number of lines to read. Only provide if the file is too large to read at once.",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "pages": {
+                "description": "Page range for PDF files (e.g., \"1-5\", \"3\", \"10-20\"). Only applicable to PDF files. Maximum 20 pages per request.",
+                "type": "string"
+              },
+              "allow_large": {
+                "description": "Set to true to read a text file, or a line range of one, that is over the usual size limits, up to what still fits in your context. Only use this when you genuinely need all of it or the user asked for the whole file; otherwise read it in parts with offset and limit, or search it.",
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "file_path"
+            ],
+            "additionalProperties": false
+          }
+        }
+      ],
+      "metadata": {
+        "user_id": "{\"device_id\":\"df6db2478766169a29d0114a86a0b277e602fe226ec1a3ce3c0d4dc3e1c22d86\",\"account_uuid\":\"\",\"session_id\":\"af07d55b-3bf5-4e57-a23e-8484924e421e\"}"
+      },
+      "max_tokens": 32000,
+      "thinking": {
+        "type": "adaptive",
+        "display": "updates"
+      },
+      "context_management": {
+        "edits": [
+          {
+            "type": "clear_thinking_20251015",
+            "keep": "all"
+          }
+        ]
+      },
+      "output_config": {
+        "effort": "high"
+      },
+      "stream": true
+    },
+    {
+      "model": "gemini-3.5-flash-lite",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Read normalize.py and implement stripping whitespace and lowercasing. Edit only normalize.py."
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "tool_use",
+              "id": "toolu_probe_1",
+              "name": "Read",
+              "input": {
+                "file_path": "/repo/normalize.py"
+              }
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "content": [
+            {
+              "tool_use_id": "toolu_probe_1",
+              "type": "tool_result",
+              "content": "1\tdef normalize(value):\n2\t    return value\n3\t"
+            }
+          ]
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "tool_use",
+              "id": "toolu_probe_2",
+              "name": "Edit",
+              "input": {
+                "replace_all": false,
+                "file_path": "/repo/normalize.py",
+                "old_string": "return value",
+                "new_string": "return value.strip().lower()"
+              }
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "content": [
+            {
+              "tool_use_id": "toolu_probe_2",
+              "type": "tool_result",
+              "content": "The file /repo/normalize.py has been updated successfully. (file state is current in your context \u2014 no need to Read it back)",
+              "cache_control": {
+                "type": "ephemeral"
+              }
+            }
+          ]
+        }
+      ],
+      "system": [
+        {
+          "type": "text",
+          "text": "x-anthropic-billing-header: cc_version=2.1.311.fa6; cc_entrypoint=sdk-cli;"
+        },
+        {
+          "type": "text",
+          "text": "You are a Claude agent, built on Anthropic's Claude Agent SDK.",
+          "cache_control": {
+            "type": "ephemeral"
+          }
+        },
+        {
+          "type": "text",
+          "text": "CWD: /repo\nDate: 2026-11-03",
+          "cache_control": {
+            "type": "ephemeral"
+          }
+        }
+      ],
+      "tools": [
+        {
+          "name": "Edit",
+          "description": "modify file contents in place",
+          "input_schema": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+            "properties": {
+              "file_path": {
+                "description": "The absolute path to the file to modify",
+                "type": "string"
+              },
+              "old_string": {
+                "description": "The text to replace",
+                "type": "string"
+              },
+              "new_string": {
+                "description": "The text to replace it with (must be different from old_string)",
+                "type": "string"
+              },
+              "replace_all": {
+                "description": "Replace all occurrences of old_string (default false)",
+                "default": false,
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "file_path",
+              "old_string",
+              "new_string"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "Read",
+          "description": "read files, images, PDFs, notebooks",
+          "input_schema": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+            "properties": {
+              "file_path": {
+                "description": "The absolute path to the file to read",
+                "type": "string"
+              },
+              "offset": {
+                "description": "The line number to start reading from. Only provide if the file is too large to read at once",
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "limit": {
+                "description": "The number of lines to read. Only provide if the file is too large to read at once.",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "pages": {
+                "description": "Page range for PDF files (e.g., \"1-5\", \"3\", \"10-20\"). Only applicable to PDF files. Maximum 20 pages per request.",
+                "type": "string"
+              },
+              "allow_large": {
+                "description": "Set to true to read a text file, or a line range of one, that is over the usual size limits, up to what still fits in your context. Only use this when you genuinely need all of it or the user asked for the whole file; otherwise read it in parts with offset and limit, or search it.",
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "file_path"
+            ],
+            "additionalProperties": false
+          }
+        }
+      ],
+      "metadata": {
+        "user_id": "{\"device_id\":\"df6db2478766169a29d0114a86a0b277e602fe226ec1a3ce3c0d4dc3e1c22d86\",\"account_uuid\":\"\",\"session_id\":\"af07d55b-3bf5-4e57-a23e-8484924e421e\"}"
+      },
+      "max_tokens": 32000,
+      "thinking": {
+        "type": "adaptive",
+        "display": "updates"
+      },
+      "context_management": {
+        "edits": [
+          {
+            "type": "clear_thinking_20251015",
+            "keep": "all"
+          }
+        ]
+      },
+      "output_config": {
+        "effort": "high"
+      },
+      "stream": true
+    }
+  ],
+  "responses": [
+    "event: message_start\ndata: {\"type\": \"message_start\", \"message\": {\"id\": \"msg_probe_1\", \"type\": \"message\", \"role\": \"assistant\", \"model\": \"gemini-3.5-flash-lite[1m]\", \"content\": [], \"stop_reason\": null, \"stop_sequence\": null, \"usage\": {\"input_tokens\": 10, \"output_tokens\": 0}}}\n\nevent: content_block_start\ndata: {\"type\": \"content_block_start\", \"index\": 0, \"content_block\": {\"type\": \"tool_use\", \"id\": \"toolu_probe_1\", \"name\": \"Read\", \"input\": {}}}\n\nevent: content_block_delta\ndata: {\"type\": \"content_block_delta\", \"index\": 0, \"delta\": {\"type\": \"input_json_delta\", \"partial_json\": \"{\\\"file_path\\\": \\\"/repo/normalize.py\\\"}\"}}\n\nevent: content_block_stop\ndata: {\"type\": \"content_block_stop\", \"index\": 0}\n\nevent: message_delta\ndata: {\"type\": \"message_delta\", \"delta\": {\"stop_reason\": \"tool_use\", \"stop_sequence\": null}, \"usage\": {\"output_tokens\": 10}}\n\nevent: message_stop\ndata: {\"type\": \"message_stop\"}\n\n",
+    "event: message_start\ndata: {\"type\": \"message_start\", \"message\": {\"id\": \"msg_probe_2\", \"type\": \"message\", \"role\": \"assistant\", \"model\": \"gemini-3.5-flash-lite[1m]\", \"content\": [], \"stop_reason\": null, \"stop_sequence\": null, \"usage\": {\"input_tokens\": 10, \"output_tokens\": 0}}}\n\nevent: content_block_start\ndata: {\"type\": \"content_block_start\", \"index\": 0, \"content_block\": {\"type\": \"tool_use\", \"id\": \"toolu_probe_2\", \"name\": \"Edit\", \"input\": {}}}\n\nevent: content_block_delta\ndata: {\"type\": \"content_block_delta\", \"index\": 0, \"delta\": {\"type\": \"input_json_delta\", \"partial_json\": \"{\\\"file_path\\\": \\\"/repo/normalize.py\\\", \\\"old_string\\\": \\\"return value\\\", \\\"new_string\\\": \\\"return value.strip().lower()\\\"}\"}}\n\nevent: content_block_stop\ndata: {\"type\": \"content_block_stop\", \"index\": 0}\n\nevent: message_delta\ndata: {\"type\": \"message_delta\", \"delta\": {\"stop_reason\": \"tool_use\", \"stop_sequence\": null}, \"usage\": {\"output_tokens\": 10}}\n\nevent: message_stop\ndata: {\"type\": \"message_stop\"}\n\n",
+    "event: message_start\ndata: {\"type\": \"message_start\", \"message\": {\"id\": \"msg_probe_3\", \"type\": \"message\", \"role\": \"assistant\", \"model\": \"gemini-3.5-flash-lite[1m]\", \"content\": [], \"stop_reason\": null, \"stop_sequence\": null, \"usage\": {\"input_tokens\": 10, \"output_tokens\": 0}}}\n\nevent: content_block_start\ndata: {\"type\": \"content_block_start\", \"index\": 0, \"content_block\": {\"type\": \"text\", \"text\": \"\"}}\n\nevent: content_block_delta\ndata: {\"type\": \"content_block_delta\", \"index\": 0, \"delta\": {\"type\": \"text_delta\", \"text\": \"Completed the authorized edit.\"}}\n\nevent: content_block_stop\ndata: {\"type\": \"content_block_stop\", \"index\": 0}\n\nevent: message_delta\ndata: {\"type\": \"message_delta\", \"delta\": {\"stop_reason\": \"end_turn\", \"stop_sequence\": null}, \"usage\": {\"output_tokens\": 10}}\n\nevent: message_stop\ndata: {\"type\": \"message_stop\"}\n\n"
+  ],
+  "translations": [
+    {
+      "generationConfig": {
+        "maxOutputTokens": 32000,
+        "thinkingConfig": {
+          "thinkingLevel": "HIGH"
+        }
+      },
+      "presentation": {
+        "requested": "updates",
+        "effective": "unavailable",
+        "degraded": true
+      },
+      "translation_version": "claude-adaptive-high-gemini-high-v1",
+      "request_cap": 32000,
+      "upstream_cap": 32000
+    },
+    {
+      "generationConfig": {
+        "maxOutputTokens": 32000,
+        "thinkingConfig": {
+          "thinkingLevel": "HIGH"
+        }
+      },
+      "presentation": {
+        "requested": "updates",
+        "effective": "unavailable",
+        "degraded": true
+      },
+      "translation_version": "claude-adaptive-high-gemini-high-v1",
+      "request_cap": 32000,
+      "upstream_cap": 32000
+    },
+    {
+      "generationConfig": {
+        "maxOutputTokens": 32000,
+        "thinkingConfig": {
+          "thinkingLevel": "HIGH"
+        }
+      },
+      "presentation": {
+        "requested": "updates",
+        "effective": "unavailable",
+        "degraded": true
+      },
+      "translation_version": "claude-adaptive-high-gemini-high-v1",
+      "request_cap": 32000,
+      "upstream_cap": 32000
+    }
+  ]
+}
